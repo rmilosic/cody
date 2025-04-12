@@ -18,7 +18,7 @@ from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
 
 with open("data/ciselniky/vykon.jsonl") as f:
-    vykony = [json.loads(line) for line in f]
+    vykony = [json.loads(line) for line in f if line.strip()]
 
 
 class Configuration(BaseModel):
@@ -65,7 +65,7 @@ def add_code(code: int, description: str) -> dict[str, Any]:
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Medical report",
+    "title": "MedicalReport",
     "description": "Medical report of the patient",
     "type": "object",
     "definitions": reduce(
