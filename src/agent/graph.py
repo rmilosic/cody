@@ -17,8 +17,13 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
 
+from typing import cast
+
 with open("data/ciselniky/vykon.jsonl") as f:
     vykony = [json.loads(line) for line in f if line.strip()]
+
+with open("data/ciselniky/mkn.jsonl") as f:
+    mkn = [json.loads(line) for line in f if line.strip()]
 
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -33,6 +38,17 @@ You are an advanced medical AI assistant specialized in suggesting Czech billing
 5.  **You MUST Map the procedures/materials to the enumerated insurance billing codes available in the LLM tool you are operating within :** Map *only* to the completed actions and used materials identified from this encounter.
 
 Do not include **any** introductory text, explanations, summaries, apologies, confidence scores, or concluding remarks in your response.
+
+We know that the patient has the following diagnoses:
+{diagnoses}
+"""
+
+
+PREPROCESS_PROMPT = """
+You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text.
+
+There are the following diagnoses. Please pick at least one diagnosis that best describes the patient's condition in MKN-10 classification.
+{diagnoses}
 """
 
 
@@ -40,6 +56,14 @@ class Configuration(BaseModel):
     system_prompt: str = Field(
         default=DEFAULT_SYSTEM_PROMPT,
         json_schema_extra={"langgraph_nodes": ["model"], "langgraph_type": "prompt"},
+    )
+
+    preprocess_prompt: str = Field(
+        default=PREPROCESS_PROMPT,
+        json_schema_extra={
+            "langgraph_nodes": ["preprocess"],
+            "langgraph_type": "prompt",
+        },
     )
 
     @classmethod
@@ -54,6 +78,7 @@ class Configuration(BaseModel):
 class State(BaseModel):
     report: str = "example"
     diagnosis: dict[str, Any] | None = None
+    preprocess_diagnosis: dict[str, Any] | None = None
 
 
 code_refs = []
@@ -94,16 +119,58 @@ schema = {
 }
 
 
+async def preprocess(state: State, config: RunnableConfig) -> State:
+    configuration = Configuration.from_runnable_config(config)
+
+    diagnoses = "\n".join([f"- {v['DG']}: {v['NAZ']}" for v in mkn])
+
+    class MKN10Code(BaseModel):
+        """A diagnosis in MKN-10 classification."""
+
+        code: str
+        description: str
+
+    class PreprocessOutput(BaseModel):
+        """Please pick at least one diagnosis that best describes the patient's condition in MKN-10 classification."""
+
+        codes: list[MKN10Code]
+
+    result = await (
+        ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        .with_structured_output(PreprocessOutput)
+        .ainvoke(
+            [
+                SystemMessage(
+                    content=configuration.preprocess_prompt.format(diagnoses=diagnoses)
+                ),
+                HumanMessage(content=state.report),
+            ]
+        )
+    )
+
+    result = cast(PreprocessOutput, result)
+    return {"preprocess_diagnosis": result.model_dump()}
+
+
 async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     configuration = Configuration.from_runnable_config(config)
 
+    diagnoses = "\n".join(
+        [
+            f"- {v['code']}: {v['description']}"
+            for v in state.preprocess_diagnosis.get("codes", [])
+        ]
+    )
+
     diagnosis = (
-        await ChatOpenAI(model="gpt-4o-mini", temperature=1)
+        await ChatOpenAI(model="gpt-4o-mini", temperature=0)
         .with_structured_output(schema)
         .ainvoke(
             [
-                SystemMessage(content=configuration.system_prompt),
+                SystemMessage(
+                    content=configuration.system_prompt.format(diagnoses=diagnoses)
+                ),
                 HumanMessage(content=state.report),
             ]
         )
@@ -113,8 +180,11 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
 
 
 workflow = StateGraph(State, config_schema=Configuration)
+workflow.add_node("preprocess", preprocess)
 workflow.add_node("model", model)
-workflow.add_edge("__start__", "model")
+workflow.add_edge("__start__", "preprocess")
+workflow.add_edge("preprocess", "model")
+
 
 graph = workflow.compile()
 graph.name = "New Graph"  # This defines the custom name in LangSmith
