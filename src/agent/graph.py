@@ -12,13 +12,13 @@ import logging
 from functools import reduce
 from typing import Any, Dict, Literal, Optional, cast
 
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
-
-from langchain_anthropic import ChatAnthropic
 
 with open("data/ciselniky/vykon.jsonl") as f:
     vykony = [json.loads(line) for line in f if line.strip()]
@@ -60,6 +60,28 @@ There are the following diagnoses. Please pick at least one diagnosis that best 
 """
 
 
+VALIDATE_PROMPT = """
+You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text. Check if the provided billing codes are correct. 
+Give an explanation for your reasoning for the worker. Return which codes are correct and which are not, those will be removed from the list. Explain why you are keeping or removing the codes. 
+The life of humanity depends on it.
+
+User has the following diagnoses:
+{diagnoses}
+
+Expected codes based off the diagnoses:
+{expected_codes}
+"""
+
+VALIDATE_HUMAN_PROMPT = """Report:
+{report}
+
+=======
+
+Billing codes:
+{vykony}
+"""
+
+
 class Configuration(BaseModel):
     system_prompt: str = Field(
         default=DEFAULT_SYSTEM_PROMPT,
@@ -70,6 +92,22 @@ class Configuration(BaseModel):
         default=PREPROCESS_PROMPT,
         json_schema_extra={
             "langgraph_nodes": ["preprocess"],
+            "langgraph_type": "prompt",
+        },
+    )
+
+    validate_prompt: str = Field(
+        default=VALIDATE_PROMPT,
+        json_schema_extra={
+            "langgraph_nodes": ["validate"],
+            "langgraph_type": "prompt",
+        },
+    )
+
+    validate_human_prompt: str = Field(
+        default=VALIDATE_HUMAN_PROMPT,
+        json_schema_extra={
+            "langgraph_nodes": ["validate"],
             "langgraph_type": "prompt",
         },
     )
@@ -204,29 +242,9 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     return {"diagnosis": diagnosis}
 
 
-VALIDATE_PROMPT = """
-You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text. Check if the provided billing codes are correct. 
-Give an explanation for your reasoning for the worker. Return which codes are correct and which are not, those will be removed from the list. Explain why you are keeping or removing the codes. 
-The life of humanity depends on it.
-
-User has the following diagnoses:
-{diagnoses}
-
-Expected codes based off the diagnoses:
-{expected_codes}
-"""
-
-VALIDATE_HUMAN_PROMPT = """Report:
-{report}
-
-=======
-
-Billing codes:
-{vykony}
-"""
-
-
 async def validate(state: State, config: RunnableConfig) -> State:
+    configuration = Configuration.from_runnable_config(config)
+
     vykony = state.diagnosis.get("vykony", [])
     vykony_str = "\n".join([f"- {v['code']}: {v['description']}" for v in vykony])
 
@@ -258,7 +276,7 @@ async def validate(state: State, config: RunnableConfig) -> State:
         .ainvoke(
             [
                 SystemMessage(
-                    VALIDATE_PROMPT.format(
+                    configuration.validate_prompt.format(
                         diagnoses="\n".join(
                             [
                                 f"- {v['code']}: {v['description']}"
@@ -272,7 +290,7 @@ async def validate(state: State, config: RunnableConfig) -> State:
                     )
                 ),
                 HumanMessage(
-                    content=VALIDATE_HUMAN_PROMPT.format(
+                    content=configuration.validate_human_prompt.format(
                         report=state.report, vykony=vykony_str
                     )
                 ),
