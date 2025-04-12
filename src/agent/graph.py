@@ -7,14 +7,13 @@ This agent returns a predefined response without using an actual LLM.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
 from typing import Any, Dict, Literal, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class V43629(BaseModel):
@@ -148,15 +147,14 @@ class Diagnosis(BaseModel):
     ]
 
 
-@dataclass(kw_only=True)
-class Configuration:
-    """The configuration for the agent."""
-
-    # Changeme: Add configurable values here!
-    # these values can be pre-set when you
-    # create assistants (https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud/)
-    # and when you invoke the graph
-    my_configurable_param: str = "changeme"
+class Configuration(BaseModel):
+    system_prompt: str = Field(
+        default="Extract the diagnosis from the text. Try to match as many codes as possible.",
+        json_schema_extra={
+            "langgraph_nodes": ["my_node"],
+            "langgraph_type": "prompt",
+        },
+    )
 
     @classmethod
     def from_runnable_config(
@@ -164,8 +162,7 @@ class Configuration:
     ) -> Configuration:
         """Create a Configuration instance from a RunnableConfig object."""
         configurable = (config.get("configurable") or {}) if config else {}
-        _fields = {f.name for f in fields(cls) if f.init}
-        return cls(**{k: v for k, v in configurable.items() if k in _fields})
+        return cls.model_validate(configurable)
 
 
 class State(BaseModel):
@@ -182,9 +179,7 @@ async def my_node(state: State, config: RunnableConfig) -> Dict[str, Any]:
         .with_structured_output(Diagnosis)
         .ainvoke(
             [
-                SystemMessage(
-                    content="Extract the diagnosis from the text. Try to match as many codes as possible"
-                ),
+                SystemMessage(content=configuration.system_prompt),
                 HumanMessage(content=state.report),
             ]
         )
