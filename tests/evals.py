@@ -39,7 +39,7 @@ async def main():
         graph,
         data="rakathon-oncoders",
         evaluators=[accuracy],
-        max_concurrency=20,
+        max_concurrency=0,
     )
 
 
