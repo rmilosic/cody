@@ -12,6 +12,8 @@ import logging
 from functools import reduce
 from typing import Any, Dict, Literal, Optional, cast
 
+import numpy as np
+import pandas as pd
 from langchain.vectorstores import FAISS
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -27,11 +29,28 @@ vector_store = FAISS.load_local(
 )
 
 with open("data/ciselniky/vykon.jsonl") as f:
-    vykony = [json.loads(line) for line in f if line.strip()]
+    vykony_cis = [json.loads(line) for line in f if line.strip()]
 
 with open("data/ciselniky/mkn.jsonl") as f:
-    mkn = [json.loads(line) for line in f if line.strip()]
+    mkn_cis = [json.loads(line) for line in f if line.strip()]
 
+
+vykony = pd.read_csv(
+    "data/vykazy/vyk_23_vykony_new.csv", encoding="windows-1252", sep=";"
+)
+vykony_pivot = pd.get_dummies(vykony.set_index("CDOKL")["KOD"]).groupby("CDOKL").sum()
+co_occurrence_matrix = np.dot(vykony_pivot.T, vykony_pivot)
+np.fill_diagonal(co_occurrence_matrix, 0)
+co_occurrence_df = pd.DataFrame(
+    co_occurrence_matrix, index=vykony_pivot.columns, columns=vykony_pivot.columns
+)
+
+co_occurrence_df_normalized = (co_occurrence_df - co_occurrence_df.min()) / (
+    co_occurrence_df.max() - co_occurrence_df.min()
+)
+co_occurrence_df_normalized.fillna(0, inplace=True)
+co_occurrence_df_normalized.reset_index(inplace=True)
+co_occurrence_df_normalized.rename(columns={"index": "kod"}, inplace=True)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +89,8 @@ VALIDATE_PROMPT = """
 You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text. Check if the provided billing codes are correct. 
 Give an explanation for your reasoning for the worker. Return which codes are correct and which are not, those will be removed from the list. Explain why you are keeping or removing the codes. 
 The life of humanity depends on it.
+
+Do not throw out generic codes that may apply for the initial appointment. Do not throw out codes that may be duplicated as multiple codes may apply for a single visit.
 
 User has the following diagnoses:
 {diagnoses}
@@ -140,7 +161,7 @@ class State(BaseModel):
 async def preprocess(state: State, config: RunnableConfig) -> State:
     configuration = Configuration.from_runnable_config(config)
 
-    diagnoses = "\n".join([f"- {v['DG']}: {v['NAZ']}" for v in mkn])
+    diagnoses = "\n".join([f"- {v['DG']}: {v['NAZ']}" for v in mkn_cis])
 
     class MKN10Code(BaseModel):
         """A diagnosis in MKN-10 classification."""
@@ -182,7 +203,7 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
             continue
 
         for code in diag_code_proportion[code]:
-            found_vykon = next((v for v in vykony if v["code"] == code), None)
+            found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
             if found_vykon:
                 suggested_vykony.append(found_vykon)
 
@@ -263,6 +284,43 @@ Suggested vykony:
 """
 
 
+async def add_co_occurrence_vykony(state: State, config: RunnableConfig) -> State:
+    configuration = Configuration.from_runnable_config(config)
+
+    relevant_docs = vector_store.similarity_search(state.report, k=10)
+    docs = []
+    for doc in relevant_docs:
+        docs.append(json.loads(doc.page_content))
+
+    docs = pd.DataFrame(docs)
+
+    to_add_codes = []
+    for code in docs["code"].tolist():
+        df = co_occurrence_df_normalized[["kod", code]]
+        df = df[df["kod"].isin([42022, 9543])]
+        df = df[df[code] >= 0.6]  # some threshold
+        df = df.sort_values(by=code, ascending=False)
+        df = df.reset_index(drop=True)
+
+        if len(df) > 0:
+            to_add_codes.extend(df["kod"].tolist())
+
+    to_add_codes = list(set(to_add_codes))
+
+    new_vykony = state.diagnosis.get("vykony", []).copy()
+    for code in to_add_codes:
+        found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
+        if found_vykon:
+            new_vykony.append(
+                {
+                    "code": found_vykon["code"],
+                    "description": found_vykon["description"] or found_vykon["name"],
+                }
+            )
+
+    return {"diagnosis": {"vykony": new_vykony}}
+
+
 async def add_embedded_vykony(state: State, config: RunnableConfig) -> State:
     configuration = Configuration.from_runnable_config(config)
 
@@ -277,7 +335,7 @@ async def add_embedded_vykony(state: State, config: RunnableConfig) -> State:
 
     suggested_vykony = []
     for code, _ in top_10:
-        found_vykon = next((v for v in vykony if v["code"] == code), None)
+        found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
         if found_vykon:
             suggested_vykony.append(found_vykon)
 
@@ -399,12 +457,12 @@ async def validate(state: State, config: RunnableConfig) -> State:
 workflow = StateGraph(State, config_schema=Configuration)
 workflow.add_node("preprocess", preprocess)
 workflow.add_node("model", model)
-workflow.add_node("add_embedded_vykony", add_embedded_vykony)
+workflow.add_node("add_embedded_vykony", add_co_occurrence_vykony)
 workflow.add_node("validate", validate)
 workflow.add_edge("__start__", "preprocess")
 workflow.add_edge("preprocess", "model")
-workflow.add_edge("model", "add_embedded_vykony")
-workflow.add_edge("add_embedded_vykony", "validate")
+workflow.add_edge("model", "validate")
+workflow.add_edge("validate", "add_embedded_vykony")
 
 graph = workflow.compile()
 graph.name = "New Graph"  # This defines the custom name in LangSmith
