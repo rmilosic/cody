@@ -5,7 +5,6 @@ import datetime
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -17,20 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-zpravy = pd.read_pickle("pickle/zpravy.pkl")
-vazby = pd.read_pickle("pickle/vazby.pkl")
-dokumentace = pd.read_pickle("pickle/dokumentace.pkl")
-material = pd.read_pickle("pickle/material.pkl")
-vykony = pd.read_pickle("pickle/vykony.pkl")
-vykpac = pd.read_pickle("pickle/vykpac.pkl")
-
-
-class PatientDataRequest(BaseModel):
-    iloc: int
-
 
 @app.get("/get_patient_data/{iloc}")
 async def get_patient_data(iloc: int):
+    zpravy = pd.read_pickle("pickle/zpravy.pkl")
+    vazby = pd.read_pickle("pickle/vazby.pkl")
+    dokumentace = pd.read_pickle("pickle/dokumentace.pkl")
+    material = pd.read_pickle("pickle/material.pkl")
+    vykony = pd.read_pickle("pickle/vykony.pkl")
+    vykpac = pd.read_pickle("pickle/vykpac.pkl")
+
     try:
         item_zpravy = zpravy.iloc[iloc]
     except IndexError:

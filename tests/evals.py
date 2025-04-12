@@ -20,7 +20,9 @@ def correct(outputs: dict, reference_outputs: dict) -> bool:
 
 
 async def main():
-    await aevaluate(graph, data="rakathon-oncoders", evaluators=[correct])
+    await aevaluate(
+        graph, data="rakathon-oncoders", evaluators=[correct], max_concurrency=20
+    )
 
 
 if __name__ == "__main__":
