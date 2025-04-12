@@ -4,9 +4,10 @@ import json
 from dotenv import load_dotenv
 from langsmith import aevaluate
 
+load_dotenv()
+
 from agent.graph import graph
 
-load_dotenv()
 
 
 def accuracy(outputs: dict, reference_outputs: dict) -> float:
@@ -39,7 +40,7 @@ async def main():
         graph,
         data="rakathon-oncoders",
         evaluators=[accuracy],
-        max_concurrency=0,
+        max_concurrency=10,
     )
 
 

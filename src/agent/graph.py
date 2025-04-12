@@ -12,13 +12,19 @@ import logging
 from functools import reduce
 from typing import Any, Dict, Literal, Optional, cast
 
+from langchain.vectorstores import FAISS
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
+
+vector_store = FAISS.load_local(
+    "faiss_index",
+    OpenAIEmbeddings(model="text-embedding-3-small"),
+    allow_dangerous_deserialization=True,
+)
 
 with open("data/ciselniky/vykon.jsonl") as f:
     vykony = [json.loads(line) for line in f if line.strip()]
@@ -77,7 +83,7 @@ VALIDATE_HUMAN_PROMPT = """Report:
 
 =======
 
-Billing codes:
+Billing codes provided by the doctor:
 {vykony}
 """
 
@@ -126,6 +132,7 @@ class State(BaseModel):
     diagnosis: dict[str, Any] | None = None
     preprocess_diagnosis: dict[str, Any] | None = None
 
+    embedded_vykony: list[dict[str, Any]] = []
     validity: dict[str, Any] | None = None
     explanation: str | None = None
 
@@ -205,7 +212,10 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
         "description": "Medical report of the patient",
         "type": "object",
         "definitions": reduce(
-            lambda acc, item: {**acc, **add_code(item["code"], item["description"])},
+            lambda acc, item: {
+                **acc,
+                **add_code(item["code"], item["description"] or item["name"]),
+            },
             suggested_vykony,
             {},
         ),
@@ -222,7 +232,7 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     )
 
     diagnosis = (
-        await ChatAnthropic(model="claude-3-7-sonnet-latest")
+        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
         .with_structured_output(schema)
         .ainvoke(
             [
@@ -242,6 +252,75 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     return {"diagnosis": diagnosis}
 
 
+EMBEDDED_VYKONY_PROMPT = """
+You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text.
+
+You are given a list of expected vykony that are based off the frequency of the codes in the database. Please pick the most relevant vykony and return them in a list to be added to the medical report. 
+The explanation should be based on the provided doctor's report.
+
+Suggested vykony:
+{suggested_vykony}
+"""
+
+
+async def add_embedded_vykony(state: State, config: RunnableConfig) -> State:
+    configuration = Configuration.from_runnable_config(config)
+
+    from collections import defaultdict
+
+    top_10 = defaultdict(int)
+    for items in diag_code_proportion.values():
+        for item in items:
+            top_10[item] += 1
+
+    top_10 = sorted(top_10.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    suggested_vykony = []
+    for code, _ in top_10:
+        found_vykon = next((v for v in vykony if v["code"] == code), None)
+        if found_vykon:
+            suggested_vykony.append(found_vykon)
+
+    suggested_vykony = "\n".join(
+        [f"- {v['code']}: {v['description'] or v['name']}" for v in suggested_vykony]
+    )
+
+    class VykonAction(BaseModel):
+        """Action to take on the vykon."""
+
+        code: int = Field(description="Code of the 'vykon'")
+        description: str = Field(description="Description of the 'vykon'")
+        explanation: str = Field(description="Explanation for the action")
+
+    class AddEmbeddedVykonyOutput(BaseModel):
+        vykony: list[VykonAction]
+
+    actions = await (
+        ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
+        .with_structured_output(AddEmbeddedVykonyOutput)
+        .ainvoke(
+            [
+                SystemMessage(
+                    content=EMBEDDED_VYKONY_PROMPT.format(
+                        suggested_vykony=suggested_vykony
+                    )
+                ),
+                HumanMessage(content=state.report),
+            ]
+        )
+    )
+
+    actions = cast(AddEmbeddedVykonyOutput, actions)
+    new_vykony = state.diagnosis.get("vykony", [])
+
+    # TODO: find the description of the vykon
+    new_vykony.extend(
+        [{"code": x.code, "description": x.description} for x in actions.vykony]
+    )
+
+    return {"diagnosis": {"vykony": new_vykony}}
+
+
 async def validate(state: State, config: RunnableConfig) -> State:
     configuration = Configuration.from_runnable_config(config)
 
@@ -256,7 +335,9 @@ async def validate(state: State, config: RunnableConfig) -> State:
         action: Literal["keep", "remove"]
 
     class ValidateOutput(BaseModel):
-        vykony: list[VykonAction]
+        vykony: list[VykonAction] = Field(
+            description="List of vykony to keep or remove. Must include all of "
+        )
 
     suggested_vykony = []
     for v in state.preprocess_diagnosis.get("codes", []):
@@ -271,7 +352,7 @@ async def validate(state: State, config: RunnableConfig) -> State:
                 suggested_vykony.append(found_vykon)
 
     validation = (
-        await ChatAnthropic(model="claude-3-7-sonnet-latest")
+        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
         .with_structured_output(ValidateOutput)
         .ainvoke(
             [
@@ -315,19 +396,15 @@ async def validate(state: State, config: RunnableConfig) -> State:
     return {"diagnosis": valid_codes, "validity": validation.model_dump()}
 
 
-def check_if_valid(state: State) -> Literal["model", "__end__"]:
-    if not state.valid:
-        return "model"
-    return "__end__"
-
-
 workflow = StateGraph(State, config_schema=Configuration)
 workflow.add_node("preprocess", preprocess)
 workflow.add_node("model", model)
+workflow.add_node("add_embedded_vykony", add_embedded_vykony)
 workflow.add_node("validate", validate)
 workflow.add_edge("__start__", "preprocess")
 workflow.add_edge("preprocess", "model")
-workflow.add_edge("model", "validate")
+workflow.add_edge("model", "add_embedded_vykony")
+workflow.add_edge("add_embedded_vykony", "validate")
 
 graph = workflow.compile()
 graph.name = "New Graph"  # This defines the custom name in LangSmith
