@@ -18,6 +18,8 @@ import {
   Bot,
   User,
   LoaderCircle,
+  SparklesIcon,
+  Dices
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -119,15 +121,6 @@ export default function BillingCodeGenerator() {
     <>
       <div className="flex gap-4 items-center">
         <div className="font-semibold text-3xl flex-grow">Cody</div>
-        <div className="flex gap-2 items-center">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setRandomIdx((prev) => (prev ?? -1) + 1)}
-          >
-            Enter random patient
-          </Button>
-        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -143,7 +136,15 @@ export default function BillingCodeGenerator() {
               onChange={(e) => setMedicalReport(e.target.value)}
             />
           </CardContent>
-          <CardFooter>
+          <CardFooter className="grid grid-cols-[auto_1fr] gap-4">
+            <Button
+              variant="outline"
+              onClick={() => setRandomIdx((prev) => (prev ?? -1) + 1)}
+            >
+              <Dices className="mr-1" />
+              Enter random patient
+            </Button>
+
             <Button
               onClick={handleGenerateCodes}
               disabled={!medicalReport.trim() || stream.isLoading}
@@ -155,7 +156,10 @@ export default function BillingCodeGenerator() {
                   <span>Generating...</span>
                 </>
               ) : (
-                <span>Generate Billing Codes</span>
+                <>
+                  <SparklesIcon className="mr-1" />
+                  Generate Billing Codes
+                </>
               )}
             </Button>
           </CardFooter>
