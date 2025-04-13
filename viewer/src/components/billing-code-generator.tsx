@@ -2,7 +2,7 @@ import jsConfetti from "js-confetti"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { vykonyLabels } from "@/data/json"
+import { ShineBorder } from "@/components/magicui/shine-border"
 import {
   Card,
   CardContent,
@@ -257,7 +257,8 @@ export default function BillingCodeGenerator() {
           </div> */}
         </Card>
 
-        <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
+        <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto] relative">
+          <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} className="rounded-md" />
           <CardHeader className="flex flex-row items-center justify-between border-0">
             <CardTitle>Billing Code Report</CardTitle>
           </CardHeader>
