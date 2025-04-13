@@ -335,7 +335,7 @@ async def validate(state: AgentState, config: RunnableConfig) -> AgentState:
 
 
 async def add_co_occurrence(state: AgentState, config: RunnableConfig) -> AgentState:
-    relevant_docs = vector_store.similarity_search(state.report, k=10)
+    relevant_docs = await vector_store.asimilarity_search(state.report, k=10)
     docs = []
     for doc in relevant_docs:
         docs.append(json.loads(doc.page_content))
@@ -343,17 +343,30 @@ async def add_co_occurrence(state: AgentState, config: RunnableConfig) -> AgentS
     docs = pd.DataFrame(docs)
 
     to_add_codes = []
+    to_remove_codes = []
+
     for code in docs["code"].tolist():
         df = co_occurrence_df_normalized[["kod", code]]
-        df = df[df["kod"].isin([42022, 9543])]
-        df = df[df[code] >= 0.6]  # some threshold
-        df = df.sort_values(by=code, ascending=False)
-        df = df.reset_index(drop=True)
+        df = df[df["kod"].isin([42022, 42023, 9543])]
+        threshold = 0.6
 
-        if len(df) > 0:
-            to_add_codes.extend(df["kod"].tolist())
+        to_add = list(
+            int(x)
+            for x in df.where(df[code] >= threshold)["kod"].replace(np.nan, None)
+            if x is not None
+        )
+        to_remove = list(
+            int(x)
+            for x in df.where(df[code] < threshold)["kod"].replace(np.nan, None)
+            if x is not None
+        )
 
-    new_vykony = state.diagnosis.get("vykony", []).copy()
+        to_add_codes.extend(to_add)
+        to_remove_codes.extend(to_remove)
+
+    new_vykony = [
+        v for v in state.diagnosis.get("vykony", []) if v["code"] not in to_remove_codes
+    ]
     for code in set(to_add_codes):
         if found_vykon := utils.find_vykon_by_code(code):
             new_vykony.append(found_vykon)
@@ -387,8 +400,8 @@ edge_chain = [
     # "abbrev",
     "model",
     "validate",
-    "clear",
     "add_co_occurrence",
+    "clear",
 ]
 for i in range(len(edge_chain) - 1):
     workflow.add_edge(edge_chain[i], edge_chain[i + 1])
