@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import jsConfetti from "js-confetti"
 import {
   Card,
   CardContent,
@@ -105,30 +106,27 @@ export default function BillingCodeGenerator() {
     },
   })
 
-  const handleCodeToggle = (codeItem: BillingCodeItem) => {
-    setSelectedCodes((prev) =>
-      prev.some((item) => item.code === codeItem.code)
-        ? prev.filter((item) => item.code !== codeItem.code)
-        : [...prev, codeItem]
-    )
-  }
-
   const handleCountChange = (code: string, newCount: number) => {
-    if (newCount < 1) newCount = 1 // Ensure count is at least 1
-
-    // Update in selectedCodes if it exists there
     setSelectedCodes((prev) =>
       prev.map((item) =>
-        item.code === code ? { ...item, count: newCount } : item
+        item.code === code ? { ...item, count: Math.max(1, newCount) } : item
       )
     )
   }
 
-  const handleSubmit = () => {}
+  const ref = useRef<any | null>(null)
 
   const handleGenerateCodes = () => {
     stream.submit({ report: medicalReport })
   }
+
+  const handleSubmit = () => {
+    ref.current?.addConfetti()
+  }
+
+  useEffect(() => {
+    if (ref.current == null) ref.current = new jsConfetti()
+  }, [])
 
   return (
     <>
@@ -286,45 +284,35 @@ export default function BillingCodeGenerator() {
 
               {selectedCodes.length > 0 ? (
                 <div className="border rounded-md p-4 space-y-2">
-                  <div className="grid grid-cols-[auto_1fr_auto_auto] gap-4 pb-2 border-b mb-2">
-                    <span className="sr-only">Select</span>
+                  <div className="grid grid-cols-[auto_1fr] gap-4 pb-2 border-b mb-2">
                     <span className="font-medium">Billing Codes</span>
-                    <span className="font-medium text-sm text-right">Qty</span>
                     <span className="sr-only">Actions</span>
                   </div>
 
                   {selectedCodes.map((codeItem, idx) => (
                     <div
                       key={codeItem.code}
-                      className={`grid grid-cols-[auto_1fr_auto_auto] gap-4 items-center pb-2 pt-2.5 border rounded-md p-3 ${
+                      className={`grid grid-cols-[1fr_auto_auto] gap-4 items-center pb-2 pt-2.5 border rounded-md p-3 ${
                         codeItem.source === "ai"
                           ? "bg-blue-50/30"
                           : "bg-green-50/30"
                       }`}
                     >
-                      <div>
-                        <Checkbox
-                          id={`code-${codeItem.code}`}
-                          checked={selectedCodes.some(
-                            (item) => item.code === codeItem.code
-                          )}
-                          onCheckedChange={() => handleCodeToggle(codeItem)}
-                        />
-                      </div>
+                     
                       <div className="min-w-0">
                         <div className="flex items-center flex-wrap">
                           <label
                             htmlFor={`code-${codeItem.code}`}
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer align-baseline"
                           >
-                            <span>{codeItem.name}</span>
-                            <span className="ml-2">
+                            <span className="mr-2">
                               {codeItem.source === "ai" ? (
                                 <Bot className="h-3 w-3 text-blue-600 inline-flex" />
                               ) : (
                                 <User className="h-3 w-3 text-green-600 inline-flex" />
                               )}
                             </span>
+                            <span>{codeItem.name}</span>
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground truncate mt-1">
