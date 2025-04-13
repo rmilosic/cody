@@ -11,5 +11,5 @@ wheels/
 .DS_Store
 .langgraph_api
 pickle/*.pkl
-data/version2
+data
 backend/src/logs.log
