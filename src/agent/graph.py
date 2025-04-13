@@ -28,7 +28,7 @@ from agent.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-main_model = ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
+chat_model = ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
 router_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 
@@ -183,7 +183,7 @@ async def preprocess(state: AgentState, config: RunnableConfig) -> AgentState:
 
 
 async def abbrev(state: AgentState, config: RunnableConfig) -> AgentState:
-    result = await main_model.ainvoke(
+    result = await chat_model.ainvoke(
         [
             SystemMessage(content=abbrev_node.DE_ABBREV_SYSTEM_PROMPT),
             HumanMessage(content=state.report),
@@ -255,7 +255,7 @@ async def main_model(state: AgentState, config: RunnableConfig) -> Dict[str, Any
         ]
     )
 
-    diagnosis = await main_model.with_structured_output(schema).ainvoke(
+    diagnosis = await chat_model.with_structured_output(schema).ainvoke(
         [
             SystemMessage(
                 content=configuration.system_prompt.format(diagnoses=diagnoses)
@@ -286,7 +286,7 @@ async def validate(state: AgentState, config: RunnableConfig) -> AgentState:
             description="List of vykony to keep or remove. Must include all of user provided codes."
         )
 
-    validation: ValidateOutput = await main_model.with_structured_output(
+    validation: ValidateOutput = await chat_model.with_structured_output(
         ValidateOutput
     ).ainvoke(
         [

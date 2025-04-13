@@ -15,7 +15,7 @@ function App() {
 
   return (
     <div>
-      <main className="p-8 flex flex-col gap-4 relative min-h-screen items-center justify-center">
+      <main className="p-8 flex flex-col gap-4 relative min-h-screen justify-center">
         <TooltipProvider>
           <BillingCodeGenerator />
         </TooltipProvider>

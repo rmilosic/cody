@@ -201,6 +201,14 @@ export default function BillingCodeGenerator() {
   }
   const handleSubmit = () => ref.current?.addConfetti()
 
+  const timer = useRef<number | null>(null)
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) {
+        clearInterval(timer.current)
+      }
+    }
+  }, [])
   return (
     <>
       <div className="flex gap-4 items-center">
@@ -218,6 +226,30 @@ export default function BillingCodeGenerator() {
               className="min-h-[300px] font-mono [field-sizing:content]"
               value={medicalReport}
               onChange={(e) => setMedicalReport(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.shiftKey) {
+                  e.preventDefault()
+
+                  if (timer.current) {
+                    window.clearInterval(timer.current)
+                    timer.current = null
+
+                    return
+                  }
+
+                  const keptValue = e.currentTarget.value
+                  let i = 0
+                  timer.current = window.setInterval(() => {
+                    const nextValue = keptValue.slice(0, i)
+                    setMedicalReport(nextValue)
+                    i += 1
+
+                    if (nextValue === keptValue) {
+                      if (timer.current) window.clearInterval(timer.current)
+                    }
+                  }, 1)
+                }
+              }}
             />
           </CardContent>
           <CardFooter className="grid grid-cols-[auto_1fr] gap-4">
@@ -258,7 +290,10 @@ export default function BillingCodeGenerator() {
         </Card>
 
         <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto] relative bg-background z-10">
-          <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} className="rounded-md" />
+          <ShineBorder
+            shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]}
+            className="rounded-md"
+          />
           <CardHeader className="flex flex-row items-center justify-between border-0">
             <CardTitle>Billing Code Report</CardTitle>
           </CardHeader>
