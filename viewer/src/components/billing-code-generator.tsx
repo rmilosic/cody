@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import jsConfetti from "js-confetti"
 import {
   Card,
@@ -10,11 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
   MoreVertical,
   Trash2,
   ChevronUp,
@@ -48,13 +43,12 @@ import useSWR from "swr"
 import { fetcher } from "@/fetcher.mjs"
 import { useStream } from "@langchain/langgraph-sdk/react"
 
-// Define the type for a billing code item
 type BillingCodeItem = {
   code: string
   name: string
   description: string | null
   count: number
-  source: "ai" | "user" // Track the source of the code
+  source: "ai" | "user"
 }
 
 export default function BillingCodeGenerator() {
@@ -63,7 +57,6 @@ export default function BillingCodeGenerator() {
   const [selectedCodes, setSelectedCodes] = useState<BillingCodeItem[]>([])
 
   const [searchQuery, setSearchQuery] = useState("")
-
   const [randomIdx, setRandomIdx] = useState<number | null>(null)
 
   useSWR<{
@@ -115,23 +108,17 @@ export default function BillingCodeGenerator() {
   }
 
   const ref = useRef<any | null>(null)
-
-  const handleGenerateCodes = () => {
-    stream.submit({ report: medicalReport })
-  }
-
-  const handleSubmit = () => {
-    ref.current?.addConfetti()
-  }
-
   useEffect(() => {
     if (ref.current == null) ref.current = new jsConfetti()
   }, [])
 
+  const handleGenerateCodes = () => stream.submit({ report: medicalReport })
+  const handleSubmit = () => ref.current?.addConfetti()
+
   return (
     <>
       <div className="flex gap-4 items-center">
-        <div className="font-semibold text-xl flex-grow">Cody</div>
+        <div className="font-semibold text-3xl flex-grow">Cody</div>
         <div className="flex gap-2 items-center">
           <Button
             size="sm"
@@ -174,11 +161,11 @@ export default function BillingCodeGenerator() {
           </CardFooter>
         </Card>
 
-        <Card className="md:col-span-1">
+        <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Billing Code Report</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-grow flex flex-col">
             {/* {error && (
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
@@ -195,92 +182,70 @@ export default function BillingCodeGenerator() {
             </Alert>
           )} */}
 
-            <div className="space-y-4">
-              {/* Legend for code sources */}
-              {selectedCodes.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <Badge
-                    variant="outline"
-                    className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1"
-                  >
-                    <Bot className="h-3 w-3" />
-                    <span className="text-xs">AI suggested</span>
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="bg-green-50 text-green-700 border-green-200 flex items-center gap-1"
-                  >
-                    <User className="h-3 w-3" />
-                    <span className="text-xs">Manually added</span>
-                  </Badge>
-                </div>
-              )}
-
+            <div className="flex-grow flex flex-col gap-4">
               {/* Searchable dropdown for adding codes */}
-              <div className="mb-4">
-                <Popover open={isOpen} onOpenChange={setIsOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start">
-                      <Search className="mr-2 h-4 w-4" />
-                      Search and add billing code
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="p-0"
-                    align="start"
-                    side="bottom"
-                    sideOffset={5}
-                    style={{ width: "30vw", minWidth: "256px" }}
-                  >
-                    <Command>
-                      <CommandInput
-                        placeholder="Search billing codes..."
-                        value={searchQuery}
-                        onInput={(e) => setSearchQuery(e.currentTarget.value)}
-                      />
-                      <CommandList>
-                        <CommandEmpty>No billing code found.</CommandEmpty>
-                        <CommandGroup heading="Available Billing Codes">
-                          {billingCodes.data?.result
-                            .slice(0, 10)
-                            ?.map((codeItem) => (
-                              <CommandItem
-                                key={codeItem.code}
-                                value={`${codeItem.code} ${codeItem.description}`}
-                                onSelect={() => {
-                                  setSelectedCodes((prev) => [
-                                    ...prev,
-                                    {
-                                      code: codeItem.code.toString(),
-                                      name: codeItem.name,
-                                      description: codeItem.description,
-                                      count: 1,
-                                      source: "user",
-                                    },
-                                  ])
+              <Popover open={isOpen} onOpenChange={setIsOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <Search className="mr-2 h-4 w-4" />
+                    Search and add billing code
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="p-0"
+                  align="start"
+                  side="bottom"
+                  sideOffset={5}
+                  style={{ width: "30vw", minWidth: "256px" }}
+                >
+                  <Command>
+                    <CommandInput
+                      placeholder="Search billing codes..."
+                      value={searchQuery}
+                      onInput={(e) => setSearchQuery(e.currentTarget.value)}
+                    />
+                    <CommandList>
+                      <CommandEmpty>No billing code found.</CommandEmpty>
+                      <CommandGroup heading="Available Billing Codes">
+                        {billingCodes.data?.result
+                          .slice(0, 10)
+                          ?.map((codeItem) => (
+                            <CommandItem
+                              key={codeItem.code}
+                              value={`${codeItem.code} ${codeItem.description}`}
+                              onSelect={() => {
+                                setSelectedCodes((prev) => [
+                                  ...prev,
+                                  {
+                                    code: codeItem.code.toString(),
+                                    name: codeItem.name,
+                                    description: codeItem.description,
+                                    count: 1,
+                                    source: "user",
+                                  },
+                                ])
 
-                                  setSearchQuery("")
-                                }}
-                              >
-                                <div className="flex flex-col gap-2">
-                                  <div className="font-medium text-sm">
-                                    {codeItem.name}
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">
-                                    {codeItem.description}
-                                  </span>
-                                  <span className="font-medium text-xs">
-                                    Kód: {codeItem.code}
-                                  </span>
+                                setSearchQuery("")
+                              }}
+                            >
+                              <div className="flex flex-col gap-2">
+                                <div className="font-medium text-sm">
+                                  {codeItem.name}
                                 </div>
-                              </CommandItem>
-                            ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
+                                <span className="text-xs text-muted-foreground">
+                                  {codeItem.description}
+                                </span>
+                                <span className="font-medium text-xs">
+                                  Kód: {codeItem.code}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
               {selectedCodes.length > 0 ? (
                 <div className="border rounded-md p-4 space-y-2">
@@ -298,7 +263,6 @@ export default function BillingCodeGenerator() {
                           : "bg-green-50/30"
                       }`}
                     >
-                     
                       <div className="min-w-0">
                         <div className="flex items-center flex-wrap">
                           <label
@@ -381,7 +345,7 @@ export default function BillingCodeGenerator() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground border rounded-md">
+                <div className="text-center py-8 flex items-center justify-center text-muted-foreground border rounded-md flex-grow">
                   <p>
                     No codes in report yet. Generate codes from the medical
                     report or add them manually.
@@ -390,11 +354,28 @@ export default function BillingCodeGenerator() {
               )}
 
               {selectedCodes.length > 0 && (
-                <div className="pt-2">
+                <div className="flex justify-between items-center">
                   <p className="text-sm text-muted-foreground">
                     {selectedCodes.length} of {selectedCodes.length} codes
                     selected for billing
                   </p>
+
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <Badge
+                      variant="outline"
+                      className="bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1"
+                    >
+                      <Bot className="h-3 w-3" />
+                      <span className="text-xs">AI suggested</span>
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="bg-green-50 text-green-700 border-green-200 flex items-center gap-1"
+                    >
+                      <User className="h-3 w-3" />
+                      <span className="text-xs">Manually added</span>
+                    </Badge>
+                  </div>
                 </div>
               )}
             </div>
