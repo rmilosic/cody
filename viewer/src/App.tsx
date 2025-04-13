@@ -1,15 +1,10 @@
-import useSWR from "swr"
-import { ofetch } from "ofetch"
 import { Button } from "./components/ui/button"
 import { Fragment, useState } from "react"
-import { materialLabels, vykonyLabels } from "./data/json"
+
 import { Textarea } from "./components/ui/textarea"
 import { useStream } from "@langchain/langgraph-sdk/react"
 import { Component } from "react"
-
-const fetcher = ofetch.create({
-  baseURL: "http://localhost:2024",
-})
+import BillingCodeGenerator from "./components/billing-code-generator"
 
 interface DataTableProps<T extends Record<string, unknown>> {
   data: T[]
@@ -156,67 +151,16 @@ const GenerateNew = (props: { report: string }) => {
 
 function App() {
   const [idx, setIdx] = useState(0)
-  const pacient = useSWR<{
-    zpravy_content: string
-    material: {
-      SERIAL: number
-      CDOKL: number
-      DATUM: string
-      TYP: number
-      KOD: string
-      ZVL: number
-      LOKALIZACE: string
-      ODDELENI: number
-      MNOZSTVI: number
-      CENAUZIV: string
-      CENA: string
-      SERIALCDB: number
-      CISPAC: number
-    }[]
-    vykony: {
-      SERIAL: number
-      CDOKL: number
-      DATUM: string
-      KOD: number
-      ODBORNOST: number
-      DG: string
-      LOKALIZACE: string
-      ODDELENI: number
-      CAS: string
-      MNOZSTVI: number
-      BODY: string
-      CENAMAT: number
-      CENAUZIV: number
-      CENA: string
-      SERIALCDB: number
-      CISPAC: number
-    }[]
-  }>(`/get_patient_data/${idx}`, fetcher, { keepPreviousData: true })
 
   return (
     <main className="p-8 flex flex-col gap-4">
-      <div className="flex gap-4 items-center">
-        <div className="font-semibold text-xl flex-grow">Cody</div>
-        <div className="flex gap-2 items-center">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIdx(Math.max(0, idx - 1))}
-          >
-            Prev
-          </Button>
-          <span className="text-sm tabular-nums">{idx + 1}</span>
-          <Button size="sm" variant="outline" onClick={() => setIdx(idx + 1)}>
-            Next
-          </Button>
-        </div>
-      </div>
+      <BillingCodeGenerator />
 
-      <pre className="text-sm whitespace-pre-wrap border p-4 rounded-lg">
+      {/* <pre className="text-sm whitespace-pre-wrap border p-4 rounded-lg">
         {pacient.data?.zpravy_content}
-      </pre>
+      </pre> */}
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold">Výkony</h2>
@@ -244,7 +188,7 @@ function App() {
             />
           </div>
         </div>
-      </div>
+      </div> */}
     </main>
   )
 }

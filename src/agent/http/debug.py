@@ -3,7 +3,7 @@
 
 import duckdb
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -33,8 +33,17 @@ def read_jsonl(path: str) -> dict:
         return {str(line["code"]): line["name"] for line in obj_lines}
 
 
+def read_jsonl_vykony(path: str) -> pd.DataFrame:
+    import json
+
+    with open(path) as f:
+        obj_lines = [json.loads(line) for line in f]
+        return pd.DataFrame(obj_lines)
+
+
 materialy_labels = read_jsonl("data/ciselniky/materialy.jsonl")
 vykony_labels = read_jsonl("data/ciselniky/vykon.jsonl")
+vykony_labels_df = read_jsonl_vykony("data/ciselniky/vykon.jsonl")
 
 
 res = duckdb.sql(
@@ -142,6 +151,19 @@ res = duckdb.sql(
     order by datum_a_cas_zpravy ASC
     """
 ).df()
+
+
+@app.get("/vykony")
+async def get_vykony_cis(query: str = Query(default="")) -> dict:
+    test = (
+        duckdb.sql(
+            f"select * from vykony_labels_df where name ilike '%{query}%' or description ilike '%{query}%' limit 10"
+        )
+        .df()
+        .to_dict(orient="records")
+    )
+
+    return {"result": test}
 
 
 @app.get("/get_patient_data/{iloc}")
