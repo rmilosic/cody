@@ -144,6 +144,8 @@ export default function BillingCodeGenerator() {
     keepPreviousData: true,
   })
 
+  const [threadId, setThreadId] = useState<string | null>(null)
+
   const stream = useStream<{
     report: string
     diagnosis?: {
@@ -151,6 +153,8 @@ export default function BillingCodeGenerator() {
     }
   }>({
     apiUrl: "http://localhost:2024",
+    threadId,
+    onThreadId: setThreadId,
     assistantId: "agent",
     onFinish: (state) => {
       setSelectedCodes((prev) => [
@@ -183,6 +187,7 @@ export default function BillingCodeGenerator() {
 
   const handleGenerateCodes = () => {
     setSelectedCodes((prev) => prev.filter(({ source }) => source !== "ai"))
+    setThreadId(null)
     stream.submit({ report: medicalReport })
   }
   const handleSubmit = () => ref.current?.addConfetti()
@@ -234,18 +239,13 @@ export default function BillingCodeGenerator() {
             </Button>
           </CardFooter>
 
-          {/* <div className="gap-4 mx-6 mb-6 flex flex-col">
+          <div className="gap-4 mx-6 mb-6 flex flex-col">
             <h2 className="text-lg font-semibold">Reference</h2>
             <DataTable
               data={pacient.data?.vykony || []}
               labels={vykonyLabels}
             />
-
-            <DataTable
-              data={pacient.data?.material || []}
-              labels={materialLabels}
-            />
-          </div> */}
+          </div>
         </Card>
 
         <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
