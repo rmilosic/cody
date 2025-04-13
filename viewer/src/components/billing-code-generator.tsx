@@ -208,7 +208,7 @@ export default function BillingCodeGenerator() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="md:col-span-1">
+        <Card className="md:col-span-1 bg-background z-10">
           <CardHeader>
             <CardTitle>Medical Report</CardTitle>
           </CardHeader>
@@ -257,7 +257,7 @@ export default function BillingCodeGenerator() {
           </div> */}
         </Card>
 
-        <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto] relative">
+        <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto] relative bg-background z-10">
           <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} className="rounded-md" />
           <CardHeader className="flex flex-row items-center justify-between border-0">
             <CardTitle>Billing Code Report</CardTitle>
