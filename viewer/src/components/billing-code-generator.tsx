@@ -248,13 +248,13 @@ export default function BillingCodeGenerator() {
             </Button>
           </CardFooter>
 
-          <div className="gap-4 mx-6 mb-6 flex flex-col">
+          {/* <div className="gap-4 mx-6 mb-6 flex flex-col">
             <h2 className="text-lg font-semibold">Reference</h2>
             <DataTable
               data={pacient.data?.vykony || []}
               labels={vykonyLabels}
             />
-          </div>
+          </div> */}
         </Card>
 
         <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
