@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from functools import reduce
-from typing import Any, Dict, Literal, Optional, cast
+from typing import Any, Dict, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,8 +22,11 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
 
-from agent import utils
-from agent.state import State
+from agent import abbrev_node, utils
+from agent.state import AgentState
+
+logger = logging.getLogger(__name__)
+
 
 vector_store = FAISS.load_local(
     "faiss_index",
@@ -55,10 +58,14 @@ co_occurrence_df_normalized.fillna(0, inplace=True)
 co_occurrence_df_normalized.reset_index(inplace=True)
 co_occurrence_df_normalized.rename(columns={"index": "kod"}, inplace=True)
 
-logger = logging.getLogger(__name__)
 
-with open("data/stats/diag_code_proportion.json") as f:
-    diag_code_proportion: dict[str, list[int]] = json.load(f)
+PREPROCESS_PROMPT = """
+You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text.
+
+There are the following diagnoses. Please pick at least one diagnosis that best describes the patient's condition in MKN-10 classification.
+{diagnoses}
+"""
+
 
 DEFAULT_SYSTEM_PROMPT = """
 You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text. You will be given a medical report.
@@ -78,20 +85,12 @@ We know that the patient has the following diagnoses:
 """
 
 
-PREPROCESS_PROMPT = """
-You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text.
-
-There are the following diagnoses. Please pick at least one diagnosis that best describes the patient's condition in MKN-10 classification.
-{diagnoses}
-"""
-
-
 VALIDATE_PROMPT = """
 You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text. Check if the provided billing codes are correct. 
 Give an explanation for your reasoning for the worker. Return which codes are correct and which are not, those will be removed from the list. Explain why you are keeping or removing the codes. 
-The life of humanity depends on it.
+Quote the parts of the report that support your reasoning. 
 
-Do not throw out generic codes that may apply for the initial appointment. Do not throw out codes that may be duplicated as multiple codes may apply for a single visit.
+Do not throw out generic codes that may apply for the initial appointment. Do not throw out codes that may be duplicated as multiple codes may apply for a single visit. The life of humanity depends on it.
 
 User has the following diagnoses:
 {diagnoses}
@@ -149,7 +148,7 @@ class Configuration(BaseModel):
         return cls.model_validate(configurable)
 
 
-async def preprocess(state: State, config: RunnableConfig) -> State:
+async def preprocess(state: AgentState, config: RunnableConfig) -> AgentState:
     configuration = Configuration.from_runnable_config(config)
 
     diagnoses = "\n".join([f"- {v['DG']}: {v['NAZ']}" for v in mkn_cis])
@@ -165,7 +164,7 @@ async def preprocess(state: State, config: RunnableConfig) -> State:
 
         codes: list[MKN10Code]
 
-    result = await (
+    result: PreprocessOutput = await (
         ChatOpenAI(model="gpt-4o-mini", temperature=0)
         .with_structured_output(PreprocessOutput)
         .ainvoke(
@@ -178,41 +177,54 @@ async def preprocess(state: State, config: RunnableConfig) -> State:
         )
     )
 
-    result = cast(PreprocessOutput, result)
     return {"preprocess_diagnosis": result.model_dump()}
 
 
-async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
+async def abbrev(state: AgentState, config: RunnableConfig) -> AgentState:
+    result = await ChatAnthropic(
+        model="claude-3-7-sonnet-latest", temperature=0, max_tokens_to_sample=10_000
+    ).ainvoke(
+        [
+            SystemMessage(content=abbrev_node.DE_ABBREV_SYSTEM_PROMPT),
+            HumanMessage(content=state.report),
+        ]
+    )
+
+    return {"report": result.text()}
+
+
+async def model(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     configuration = Configuration.from_runnable_config(config)
 
     suggested_vykony = []
-    for v in state.preprocess_diagnosis.get("codes", []):
-        code = str(v["code"])
-        if code not in diag_code_proportion:
-            logger.warning(f"Code {code} not found in diag_code_proportion")
-            continue
-
-        for code in diag_code_proportion[code]:
-            found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
-            if found_vykon:
-                suggested_vykony.append(found_vykon)
+    for item in state.preprocess_diagnosis.get("codes", []):
+        suggested_vykony.extend(utils.get_vykony_per_diagnosis(item))
 
     code_refs = []
 
-    def add_code(code: int, description: str) -> dict[str, Any]:
+    def add_code(code: int, name: str, description: str | None) -> dict[str, Any]:
         code_refs.append({"$ref": f"#/definitions/{str(code)}"})
         return {
             str(code): {
                 "properties": {
                     "code": {"const": code, "title": "Code", "type": "integer"},
-                    "description": {
-                        "const": description,
-                        "title": "Description",
-                        "type": "string",
-                    },
+                    "name": {"const": name, "title": "Name", "type": "string"},
+                    **(
+                        {
+                            "description": {
+                                "const": description,
+                                "title": "Description",
+                                "type": "string",
+                            }
+                        }
+                        if description
+                        else {}
+                    ),
                 },
-                "required": ["code", "description"],
+                "required": ["code", "name", "description"]
+                if description
+                else ["code", "name"],
                 "title": str(code),
                 "type": "object",
             },
@@ -226,7 +238,7 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
         "definitions": reduce(
             lambda acc, item: {
                 **acc,
-                **add_code(item["code"], item["description"] or item["name"]),
+                **add_code(item["code"], item["name"], item["description"]),
             },
             suggested_vykony,
             {},
@@ -249,12 +261,7 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
         .ainvoke(
             [
                 SystemMessage(
-                    content=configuration.system_prompt.format(
-                        diagnoses=diagnoses,
-                        corrections=f"A more senior medical assistant has reviewed the report and provided the following corrections: {state.explanation}\n"
-                        if state.explanation
-                        else None,
-                    )
+                    content=configuration.system_prompt.format(diagnoses=diagnoses)
                 ),
                 HumanMessage(content=state.report),
             ]
@@ -264,20 +271,70 @@ async def model(state: State, config: RunnableConfig) -> Dict[str, Any]:
     return {"diagnosis": diagnosis}
 
 
-EMBEDDED_VYKONY_PROMPT = """
-You are an advanced medical AI assistant specialized in suggesting Czech billing codes based on clinical text.
-
-You are given a list of expected vykony that are based off the frequency of the codes in the database. Please pick the most relevant vykony and return them in a list to be added to the medical report. 
-The explanation should be based on the provided doctor's report.
-
-Suggested vykony:
-{suggested_vykony}
-"""
-
-
-async def add_co_occurrence_vykony(state: State, config: RunnableConfig) -> State:
+async def validate(state: AgentState, config: RunnableConfig) -> AgentState:
     configuration = Configuration.from_runnable_config(config)
 
+    suggested_vykony = []
+    for item in state.preprocess_diagnosis.get("codes", []):
+        suggested_vykony.extend(utils.get_vykony_per_diagnosis(item))
+
+    class VykonAction(BaseModel):
+        """Action to take on the vykon."""
+
+        code: int
+        explanation: str
+        action: Literal["keep", "remove"]
+
+    class ValidateOutput(BaseModel):
+        vykony: list[VykonAction] = Field(
+            description="List of vykony to keep or remove. Must include all of user provided codes."
+        )
+
+    validation: ValidateOutput = (
+        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
+        .with_structured_output(ValidateOutput)
+        .ainvoke(
+            [
+                SystemMessage(
+                    configuration.validate_prompt.format(
+                        diagnoses="\n".join(
+                            [
+                                f"- {v['code']}: {v['description']}"
+                                for v in state.preprocess_diagnosis.get("codes", [])
+                            ]
+                        ),
+                        expected_codes="\n".join(
+                            utils.vykon_to_prompt(v) for v in suggested_vykony
+                        ),
+                    )
+                ),
+                HumanMessage(
+                    content=configuration.validate_human_prompt.format(
+                        report=state.report,
+                        vykony="\n".join(
+                            [
+                                utils.vykon_to_prompt(v)
+                                for v in state.diagnosis.get("vykony", [])
+                            ]
+                        ),
+                    )
+                ),
+            ]
+        )
+    )
+
+    new_vykony = []
+    for vykon in state.diagnosis.get("vykony", []):
+        validity = next((v for v in validation.vykony if v.code == vykon["code"]), None)
+        if not validity or validity.action != "remove":
+            new_vykony.append(
+                {**vykon, "explanation": validity.explanation if validity else None}
+            )
+
+    return {"diagnosis": {"vykony": new_vykony}, "validity": validation.model_dump()}
+
+
+async def add_co_occurrence(state: AgentState, config: RunnableConfig) -> AgentState:
     relevant_docs = vector_store.similarity_search(state.report, k=10)
     docs = []
     for doc in relevant_docs:
@@ -296,173 +353,44 @@ async def add_co_occurrence_vykony(state: State, config: RunnableConfig) -> Stat
         if len(df) > 0:
             to_add_codes.extend(df["kod"].tolist())
 
-    to_add_codes = list(set(to_add_codes))
-
     new_vykony = state.diagnosis.get("vykony", []).copy()
-    for code in to_add_codes:
-        found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
-        if found_vykon:
-            new_vykony.append(
-                {
-                    "code": found_vykon["code"],
-                    "description": found_vykon["description"] or found_vykon["name"],
-                }
-            )
+    for code in set(to_add_codes):
+        if found_vykon := utils.find_vykon_by_code(code):
+            new_vykony.append(found_vykon)
 
     return {"diagnosis": {"vykony": new_vykony}}
 
 
-async def add_most_common_vykony(state: State, config: RunnableConfig) -> State:
-    configuration = Configuration.from_runnable_config(config)
-
-    from collections import defaultdict
-
-    top_10 = defaultdict(int)
-    for items in diag_code_proportion.values():
-        for item in items:
-            top_10[item] += 1
-
-    top_10 = sorted(top_10.items(), key=lambda x: x[1], reverse=True)[:10]
-
-    suggested_vykony = []
-    for code, _ in top_10:
-        found_vykon = next((v for v in vykony_cis if v["code"] == code), None)
-        if found_vykon:
-            suggested_vykony.append(found_vykon)
-
-    suggested_vykony = "\n".join(
-        [f"- {v['code']}: {v['description'] or v['name']}" for v in suggested_vykony]
-    )
-
-    class VykonAction(BaseModel):
-        """Action to take on the vykon."""
-
-        code: int = Field(description="Code of the 'vykon'")
-        description: str = Field(description="Description of the 'vykon'")
-        explanation: str = Field(description="Explanation for the action")
-
-    class AddEmbeddedVykonyOutput(BaseModel):
-        vykony: list[VykonAction]
-
-    actions = await (
-        ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
-        .with_structured_output(AddEmbeddedVykonyOutput)
-        .ainvoke(
-            [
-                SystemMessage(
-                    content=EMBEDDED_VYKONY_PROMPT.format(
-                        suggested_vykony=suggested_vykony
-                    )
-                ),
-                HumanMessage(content=state.report),
-            ]
-        )
-    )
-
-    actions = cast(AddEmbeddedVykonyOutput, actions)
-    new_vykony = state.diagnosis.get("vykony", [])
-
-    # TODO: find the description of the vykon
-    new_vykony.extend(
-        [{"code": x.code, "description": x.description} for x in actions.vykony]
-    )
-
-    return {"diagnosis": {"vykony": new_vykony}}
-
-
-async def validate(state: State, config: RunnableConfig) -> State:
-    configuration = Configuration.from_runnable_config(config)
-
+async def clear(state: AgentState, config: RunnableConfig) -> AgentState:
     vykony = state.diagnosis.get("vykony", [])
-    vykony_str = "\n".join([f"- {v['code']}: {v['description']}" for v in vykony])
-
-    class VykonAction(BaseModel):
-        """Action to take on the vykon."""
-
-        code: int
-        explanation: str
-        action: Literal["keep", "remove"]
-
-    class ValidateOutput(BaseModel):
-        vykony: list[VykonAction] = Field(
-            description="List of vykony to keep or remove. Must include all of "
-        )
-
-    suggested_vykony = []
-    for v in state.preprocess_diagnosis.get("codes", []):
-        code = str(v["code"])
-        if code not in diag_code_proportion:
-            logger.warning(f"Code {code} not found in diag_code_proportion")
-            continue
-
-        for code in diag_code_proportion[code]:
-            found_vykon = next((v for v in vykony if v["code"] == code), None)
-            if found_vykon:
-                suggested_vykony.append(found_vykon)
-
-    validation = (
-        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
-        .with_structured_output(ValidateOutput)
-        .ainvoke(
-            [
-                SystemMessage(
-                    configuration.validate_prompt.format(
-                        diagnoses="\n".join(
-                            [
-                                f"- {v['code']}: {v['description']}"
-                                for v in state.preprocess_diagnosis.get("codes", [])
-                            ]
-                        ),
-                        expected_codes="\n".join(
-                            f"- {v['code']}: {v['description']}"
-                            for v in suggested_vykony
-                        ),
-                    )
-                ),
-                HumanMessage(
-                    content=configuration.validate_human_prompt.format(
-                        report=state.report, vykony=vykony_str
-                    )
-                ),
-            ]
-        )
-    )
-
-    validation = cast(ValidateOutput, validation)
-
-    def is_valid_code(code: int) -> bool:
-        validity = next((v for v in validation.vykony if v.code == code), None)
-        return not validity or validity.action != "remove"
-
-    valid_codes = {
-        "vykony": [
-            vykon
-            for vykon in state.diagnosis.get("vykony", [])
-            if is_valid_code(vykon["code"])
-        ],
-    }
-
-    return {"diagnosis": valid_codes, "validity": validation.model_dump()}
-
-
-async def clear(state: State, config: RunnableConfig) -> State:
-    vykony = state.diagnosis.get("vykony", [])
-    vykony = [utils.find_vykon_by_code(v["code"]) for v in vykony]
-    vykony = list({int(v["code"]): v for v in vykony if v}.values())
+    vykony = [(v, utils.find_vykon_by_code(v["code"])) for v in vykony]
+    vykony = [
+        {**valid, "explanation": v.get("explanation")} for v, valid in vykony if valid
+    ]
+    vykony = list({int(v["code"]): v for v in vykony}.values())
 
     return {"diagnosis": {"vykony": vykony}}
 
 
-workflow = StateGraph(State, config_schema=Configuration)
+workflow = StateGraph(AgentState, config_schema=Configuration)
 workflow.add_node("preprocess", preprocess)
+workflow.add_node("abbrev", abbrev)
 workflow.add_node("model", model)
-workflow.add_node("add_embedded_vykony", add_co_occurrence_vykony)
+workflow.add_node("add_co_occurrence", add_co_occurrence)
 workflow.add_node("validate", validate)
 workflow.add_node("clear", clear)
 
-workflow.add_edge("__start__", "preprocess")
-workflow.add_edge("preprocess", "model")
-workflow.add_edge("model", "validate")
-workflow.add_edge("validate", "clear")
+
+edge_chain = [
+    "__start__",
+    "preprocess",
+    # "abbrev",
+    "model",
+    "validate",
+    "clear",
+    "add_co_occurrence",
+]
+for i in range(len(edge_chain) - 1):
+    workflow.add_edge(edge_chain[i], edge_chain[i + 1])
 
 graph = workflow.compile()

@@ -21,6 +21,7 @@ import {
   LoaderCircle,
   SparklesIcon,
   Dices,
+  CircleHelpIcon,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -45,6 +46,7 @@ import { Badge } from "@/components/ui/badge"
 import useSWR from "swr"
 import { fetcher } from "@/fetcher.mjs"
 import { useStream } from "@langchain/langgraph-sdk/react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip"
 
 type BillingCodeItem = {
   code: string
@@ -52,6 +54,7 @@ type BillingCodeItem = {
   description: string | null
   count: number
   source: "ai" | "user"
+  explanation?: string | null
 }
 
 interface DataTableProps<T extends Record<string, unknown>> {
@@ -149,7 +152,12 @@ export default function BillingCodeGenerator() {
   const stream = useStream<{
     report: string
     diagnosis?: {
-      vykony: Array<{ code: string; name: string; description: string | null }>
+      vykony: Array<{
+        code: string
+        name: string
+        description: string | null
+        explanation: string
+      }>
     }
   }>({
     apiUrl: "http://localhost:2024",
@@ -164,6 +172,7 @@ export default function BillingCodeGenerator() {
             code: code.code,
             name: code.name,
             description: code.description,
+            explanation: code?.explanation ?? "(unknown)",
             count: 1,
             source: "ai" as const,
           }))
@@ -345,7 +354,17 @@ export default function BillingCodeGenerator() {
                             </span>
                             <span className="mr-2">
                               {codeItem.source === "ai" ? (
-                                <Bot className="h-4 w-4 text-blue-600 inline-flex" />
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <Bot className="h-4 w-4 text-blue-600 inline-flex" />
+                                      <CircleHelpIcon className="h-4 w-4 text-blue-600 inline-flex ml-1" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[300px]">
+                                    {codeItem.explanation}
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : (
                                 <User className="h-4 w-4 text-green-600 inline-flex" />
                               )}
