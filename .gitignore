@@ -12,3 +12,4 @@ wheels/
 .langgraph_api
 pickle/*.pkl
 data/version2
+backend/src/logs.log
