@@ -22,6 +22,9 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
 
+from agent import utils
+from agent.state import State
+
 vector_store = FAISS.load_local(
     "faiss_index",
     OpenAIEmbeddings(model="text-embedding-3-small"),
@@ -68,9 +71,7 @@ You are an advanced medical AI assistant specialized in suggesting Czech billing
 4.  **Grounding:** Base your findings **solely and strictly** on explicit textual evidence describing actions **completed** or materials **used** during this specific encounter. Do not infer unmentioned items or guess codes if evidence is weak, ambiguous, or refers to plans/history.
 5.  **You MUST Map the procedures/materials to the enumerated insurance billing codes available in the LLM tool you are operating within :** Map *only* to the completed actions and used materials identified from this encounter.
 
-Do not include **any** introductory text, explanations, summaries, apologies, confidence scores, or concluding remarks in your response.
-
-{corrections}
+Do not include **any** introductory text, explanations, summaries, apologies, confidence scores, or concluding remarks in your response. 
 
 We know that the patient has the following diagnoses:
 {diagnoses}
@@ -146,16 +147,6 @@ class Configuration(BaseModel):
         """Create a Configuration instance from a RunnableConfig object."""
         configurable = (config.get("configurable") or {}) if config else {}
         return cls.model_validate(configurable)
-
-
-class State(BaseModel):
-    report: str = "example"
-    diagnosis: dict[str, Any] | None = None
-    preprocess_diagnosis: dict[str, Any] | None = None
-
-    embedded_vykony: list[dict[str, Any]] = []
-    validity: dict[str, Any] | None = None
-    explanation: str | None = None
 
 
 async def preprocess(state: State, config: RunnableConfig) -> State:
@@ -321,7 +312,7 @@ async def add_co_occurrence_vykony(state: State, config: RunnableConfig) -> Stat
     return {"diagnosis": {"vykony": new_vykony}}
 
 
-async def add_embedded_vykony(state: State, config: RunnableConfig) -> State:
+async def add_most_common_vykony(state: State, config: RunnableConfig) -> State:
     configuration = Configuration.from_runnable_config(config)
 
     from collections import defaultdict
@@ -456,7 +447,9 @@ async def validate(state: State, config: RunnableConfig) -> State:
 
 async def clear(state: State, config: RunnableConfig) -> State:
     vykony = state.diagnosis.get("vykony", [])
-    vykony = list({v["code"]: v for v in vykony}.values())
+    vykony = [utils.find_vykon_by_code(v["code"]) for v in vykony]
+    vykony = list({int(v["code"]): v for v in vykony if v}.values())
+
     return {"diagnosis": {"vykony": vykony}}
 
 
@@ -466,10 +459,10 @@ workflow.add_node("model", model)
 workflow.add_node("add_embedded_vykony", add_co_occurrence_vykony)
 workflow.add_node("validate", validate)
 workflow.add_node("clear", clear)
+
 workflow.add_edge("__start__", "preprocess")
 workflow.add_edge("preprocess", "model")
 workflow.add_edge("model", "validate")
-workflow.add_edge("validate", "add_embedded_vykony")
-workflow.add_edge("add_embedded_vykony", "clear")
+workflow.add_edge("validate", "clear")
 
 graph = workflow.compile()

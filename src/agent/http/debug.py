@@ -148,7 +148,7 @@ res = duckdb.sql(
     )
     select *
     from zpravy_a_vazby_a_dokumentace_a_vykony_a_materialy
-    order by datum_a_cas_zpravy ASC
+    order by datum_a_cas_zpravy, AMBNUM, cispac ASC
     """
 ).df()
 

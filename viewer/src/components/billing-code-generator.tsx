@@ -146,7 +146,9 @@ export default function BillingCodeGenerator() {
 
   const stream = useStream<{
     report: string
-    diagnosis?: { vykony: Array<{ code: string; description: string }> }
+    diagnosis?: {
+      vykony: Array<{ code: string; name: string; description: string | null }>
+    }
   }>({
     apiUrl: "http://localhost:2024",
     assistantId: "agent",
@@ -156,7 +158,7 @@ export default function BillingCodeGenerator() {
         ...(state.values.diagnosis?.vykony
           .map((code) => ({
             code: code.code,
-            name: code.description,
+            name: code.name,
             description: code.description,
             count: 1,
             source: "ai" as const,
@@ -232,22 +234,22 @@ export default function BillingCodeGenerator() {
             </Button>
           </CardFooter>
 
-          <div className="gap-4 mx-6 mb-6 flex flex-col">
+          {/* <div className="gap-4 mx-6 mb-6 flex flex-col">
             <h2 className="text-lg font-semibold">Reference</h2>
             <DataTable
               data={pacient.data?.vykony || []}
               labels={vykonyLabels}
             />
 
-            {/* <DataTable
+            <DataTable
               data={pacient.data?.material || []}
               labels={materialLabels}
-            /> */}
-          </div>
+            />
+          </div> */}
         </Card>
 
         <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between border-0">
             <CardTitle>Billing Code Report</CardTitle>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col">
@@ -318,7 +320,7 @@ export default function BillingCodeGenerator() {
 
               {selectedCodes.length > 0 ? (
                 <div className="border rounded-md p-4 space-y-2">
-                  <div className="grid grid-cols-[auto_1fr] gap-4 pb-2 border-b mb-2">
+                  <div className="grid grid-cols-[auto_1fr] gap-4 pb-1">
                     <span className="font-medium">Billing Codes</span>
                     <span className="sr-only">Actions</span>
                   </div>
@@ -336,18 +338,20 @@ export default function BillingCodeGenerator() {
                         <div className="flex items-center flex-wrap">
                           <label
                             htmlFor={`code-${codeItem.code}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer align-baseline"
+                            className="text-sm font-medium leading-none cursor-pointer align-baseline grid grid-cols-[auto_auto_1fr] items-start"
                           >
+                            <span className="text-xs text-muted-foreground border rounded-md px-1 mr-2 tabular-nums">
+                              {codeItem.code}
+                            </span>
                             <span className="mr-2">
                               {codeItem.source === "ai" ? (
-                                <Bot className="h-3 w-3 text-blue-600 inline-flex" />
+                                <Bot className="h-4 w-4 text-blue-600 inline-flex" />
                               ) : (
-                                <User className="h-3 w-3 text-green-600 inline-flex" />
+                                <User className="h-4 w-4 text-green-600 inline-flex" />
                               )}
                             </span>
-                            <span>{codeItem.name}</span>
-                            <span className="text-xs text-muted-foreground border rounded-md px-1 ml-2">
-                              {codeItem.code}
+                            <span className="leading-tight">
+                              {codeItem.name}
                             </span>
                           </label>
                         </div>
