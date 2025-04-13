@@ -28,6 +28,10 @@ from agent.state import AgentState
 logger = logging.getLogger(__name__)
 
 
+main_model = ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
+router_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+
 vector_store = FAISS.load_local(
     "faiss_index",
     OpenAIEmbeddings(model="text-embedding-3-small"),
@@ -164,26 +168,22 @@ async def preprocess(state: AgentState, config: RunnableConfig) -> AgentState:
 
         codes: list[MKN10Code]
 
-    result: PreprocessOutput = await (
-        ChatOpenAI(model="gpt-4o-mini", temperature=0)
-        .with_structured_output(PreprocessOutput)
-        .ainvoke(
-            [
-                SystemMessage(
-                    content=configuration.preprocess_prompt.format(diagnoses=diagnoses)
-                ),
-                HumanMessage(content=state.report),
-            ]
-        )
+    result: PreprocessOutput = await router_model.with_structured_output(
+        PreprocessOutput
+    ).ainvoke(
+        [
+            SystemMessage(
+                content=configuration.preprocess_prompt.format(diagnoses=diagnoses)
+            ),
+            HumanMessage(content=state.report),
+        ]
     )
 
     return {"preprocess_diagnosis": result.model_dump()}
 
 
 async def abbrev(state: AgentState, config: RunnableConfig) -> AgentState:
-    result = await ChatAnthropic(
-        model="claude-3-7-sonnet-latest", temperature=0, max_tokens_to_sample=10_000
-    ).ainvoke(
+    result = await main_model.ainvoke(
         [
             SystemMessage(content=abbrev_node.DE_ABBREV_SYSTEM_PROMPT),
             HumanMessage(content=state.report),
@@ -193,7 +193,7 @@ async def abbrev(state: AgentState, config: RunnableConfig) -> AgentState:
     return {"report": result.text()}
 
 
-async def model(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
+async def main_model(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     """Each node does work."""
     configuration = Configuration.from_runnable_config(config)
 
@@ -255,17 +255,13 @@ async def model(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
         ]
     )
 
-    diagnosis = (
-        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
-        .with_structured_output(schema)
-        .ainvoke(
-            [
-                SystemMessage(
-                    content=configuration.system_prompt.format(diagnoses=diagnoses)
-                ),
-                HumanMessage(content=state.report),
-            ]
-        )
+    diagnosis = await main_model.with_structured_output(schema).ainvoke(
+        [
+            SystemMessage(
+                content=configuration.system_prompt.format(diagnoses=diagnoses)
+            ),
+            HumanMessage(content=state.report),
+        ]
     )
 
     return {"diagnosis": diagnosis}
@@ -290,37 +286,35 @@ async def validate(state: AgentState, config: RunnableConfig) -> AgentState:
             description="List of vykony to keep or remove. Must include all of user provided codes."
         )
 
-    validation: ValidateOutput = (
-        await ChatAnthropic(model="claude-3-7-sonnet-latest", temperature=0)
-        .with_structured_output(ValidateOutput)
-        .ainvoke(
-            [
-                SystemMessage(
-                    configuration.validate_prompt.format(
-                        diagnoses="\n".join(
-                            [
-                                f"- {v['code']}: {v['description']}"
-                                for v in state.preprocess_diagnosis.get("codes", [])
-                            ]
-                        ),
-                        expected_codes="\n".join(
-                            utils.vykon_to_prompt(v) for v in suggested_vykony
-                        ),
-                    )
-                ),
-                HumanMessage(
-                    content=configuration.validate_human_prompt.format(
-                        report=state.report,
-                        vykony="\n".join(
-                            [
-                                utils.vykon_to_prompt(v)
-                                for v in state.diagnosis.get("vykony", [])
-                            ]
-                        ),
-                    )
-                ),
-            ]
-        )
+    validation: ValidateOutput = await main_model.with_structured_output(
+        ValidateOutput
+    ).ainvoke(
+        [
+            SystemMessage(
+                configuration.validate_prompt.format(
+                    diagnoses="\n".join(
+                        [
+                            f"- {v['code']}: {v['description']}"
+                            for v in state.preprocess_diagnosis.get("codes", [])
+                        ]
+                    ),
+                    expected_codes="\n".join(
+                        utils.vykon_to_prompt(v) for v in suggested_vykony
+                    ),
+                )
+            ),
+            HumanMessage(
+                content=configuration.validate_human_prompt.format(
+                    report=state.report,
+                    vykony="\n".join(
+                        [
+                            utils.vykon_to_prompt(v)
+                            for v in state.diagnosis.get("vykony", [])
+                        ]
+                    ),
+                )
+            ),
+        ]
     )
 
     new_vykony = []
@@ -388,7 +382,7 @@ async def clear(state: AgentState, config: RunnableConfig) -> AgentState:
 workflow = StateGraph(AgentState, config_schema=Configuration)
 workflow.add_node("preprocess", preprocess)
 workflow.add_node("abbrev", abbrev)
-workflow.add_node("model", model)
+workflow.add_node("model", main_model)
 workflow.add_node("add_co_occurrence", add_co_occurrence)
 workflow.add_node("validate", validate)
 workflow.add_node("clear", clear)
