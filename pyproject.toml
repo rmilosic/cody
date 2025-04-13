@@ -25,6 +25,8 @@ dependencies = [
     "langchain-community>=0.3.21",
     "langchain>=0.3.23",
     "langchain-groq>=0.3.2",
+    "plotly-express>=0.4.1",
+    "nbformat>=5.10.4",
     "langchain-ollama>=0.3.1",
 ]
 
