@@ -172,12 +172,14 @@ async def get_patient_data(iloc: int):
 
     def map_kod_vykonu(input: dict) -> dict:
         res = input.copy()
+        res["kod_id_vykonu"] = res["kod_vykonu"]
         if kod_vykonu := vykony_labels.get(str(res["kod_vykonu"])):
             res["kod_vykonu"] = f"({res['kod_vykonu']}): {kod_vykonu}"
         return res
 
     def map_kod_materialu(input: dict) -> dict:
         res = input.copy()
+        res["kod_id_materialu"] = res["kod_materialu"]
         if kod_materialu := (
             materialy_labels.get(str(int(res["kod_materialu"])))
             or materialy_labels.get(str(res["kod_materialu"]))

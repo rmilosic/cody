@@ -1,7 +1,8 @@
+import jsConfetti from "js-confetti"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import jsConfetti from "js-confetti"
+import { vykonyLabels } from "@/data/json"
 import {
   Card,
   CardContent,
@@ -19,7 +20,7 @@ import {
   User,
   LoaderCircle,
   SparklesIcon,
-  Dices
+  Dices,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -53,6 +54,68 @@ type BillingCodeItem = {
   source: "ai" | "user"
 }
 
+interface DataTableProps<T extends Record<string, unknown>> {
+  data: T[]
+  labels: Record<string, string>
+}
+
+function DataTable<T extends Record<string, unknown>>({
+  data,
+  labels,
+}: DataTableProps<T>) {
+  if (!data || data.length === 0)
+    return (
+      <div className="border rounded-lg text-center p-4 text-muted-foreground">
+        Žádné výkazy nenalezeny
+      </div>
+    )
+
+  return (
+    <div className="overflow-auto border rounded-lg">
+      <table className="min-w-full divide-y">
+        <thead>
+          <tr>
+            {Object.keys(data[0])
+              .filter((i) => i !== "CDOKL")
+              .map((key) => (
+                <th
+                  key={key}
+                  scope="col"
+                  className="px-4 py-3 text-left text-xs font-medium whitespace-nowrap tracking-wider"
+                >
+                  {labels[key] || key}
+                </th>
+              ))}
+          </tr>
+        </thead>
+        <tbody className="">
+          {data
+            .slice()
+            .sort(
+              (a, b) =>
+                (Number(a["kod_id_vykonu"]) ?? 0) -
+                (Number(b["kod_id_vykonu"]) ?? 0)
+            )
+            .map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {Object.entries(row)
+                  .filter(([key]) => key !== "CDOKL")
+                  .map(([key, value]) => (
+                    <td
+                      key={key}
+                      className="px-4 py-4 whitespace-nowrap text-sm"
+                    >
+                      {String(value)}
+                    </td>
+                  ))}
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function BillingCodeGenerator() {
   const [isOpen, setIsOpen] = useState(false)
   const [medicalReport, setMedicalReport] = useState("")
@@ -61,7 +124,7 @@ export default function BillingCodeGenerator() {
   const [searchQuery, setSearchQuery] = useState("")
   const [randomIdx, setRandomIdx] = useState<number | null>(null)
 
-  useSWR<{
+  const pacient = useSWR<{
     zpravy_content: string
     material: Record<string, unknown>[]
     vykony: Record<string, unknown>[]
@@ -90,13 +153,15 @@ export default function BillingCodeGenerator() {
     onFinish: (state) => {
       setSelectedCodes((prev) => [
         ...prev,
-        ...(state.values.diagnosis?.vykony.map((code) => ({
-          code: code.code,
-          name: code.description,
-          description: code.description,
-          count: 1,
-          source: "ai" as const,
-        })) ?? []),
+        ...(state.values.diagnosis?.vykony
+          .map((code) => ({
+            code: code.code,
+            name: code.description,
+            description: code.description,
+            count: 1,
+            source: "ai" as const,
+          }))
+          .sort((a, b) => Number(a.code) - Number(b.code)) ?? []),
       ])
     },
   })
@@ -114,7 +179,10 @@ export default function BillingCodeGenerator() {
     if (ref.current == null) ref.current = new jsConfetti()
   }, [])
 
-  const handleGenerateCodes = () => stream.submit({ report: medicalReport })
+  const handleGenerateCodes = () => {
+    setSelectedCodes((prev) => prev.filter(({ source }) => source !== "ai"))
+    stream.submit({ report: medicalReport })
+  }
   const handleSubmit = () => ref.current?.addConfetti()
 
   return (
@@ -163,6 +231,19 @@ export default function BillingCodeGenerator() {
               )}
             </Button>
           </CardFooter>
+
+          <div className="gap-4 mx-6 mb-6 flex flex-col">
+            <h2 className="text-lg font-semibold">Reference</h2>
+            <DataTable
+              data={pacient.data?.vykony || []}
+              labels={vykonyLabels}
+            />
+
+            {/* <DataTable
+              data={pacient.data?.material || []}
+              labels={materialLabels}
+            /> */}
+          </div>
         </Card>
 
         <Card className="md:col-span-1 grid grid-rows-[auto_1fr_auto]">
@@ -170,22 +251,6 @@ export default function BillingCodeGenerator() {
             <CardTitle>Billing Code Report</CardTitle>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col">
-            {/* {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {isSubmitted && (
-            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription>
-                Billing report successfully submitted!
-              </AlertDescription>
-            </Alert>
-          )} */}
-
             <div className="flex-grow flex flex-col gap-4">
               {/* Searchable dropdown for adding codes */}
               <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -281,6 +346,9 @@ export default function BillingCodeGenerator() {
                               )}
                             </span>
                             <span>{codeItem.name}</span>
+                            <span className="text-xs text-muted-foreground border rounded-md px-1 ml-2">
+                              {codeItem.code}
+                            </span>
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground truncate mt-1">
@@ -384,7 +452,10 @@ export default function BillingCodeGenerator() {
               )}
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="grid grid-cols-[auto_1fr] gap-4">
+            <Button variant="outline" onClick={() => setSelectedCodes([])}>
+              Clear
+            </Button>
             <Button
               onClick={handleSubmit}
               disabled={selectedCodes.length === 0}

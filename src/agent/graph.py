@@ -454,15 +454,22 @@ async def validate(state: State, config: RunnableConfig) -> State:
     return {"diagnosis": valid_codes, "validity": validation.model_dump()}
 
 
+async def clear(state: State, config: RunnableConfig) -> State:
+    vykony = state.diagnosis.get("vykony", [])
+    vykony = list({v["code"]: v for v in vykony}.values())
+    return {"diagnosis": {"vykony": vykony}}
+
+
 workflow = StateGraph(State, config_schema=Configuration)
 workflow.add_node("preprocess", preprocess)
 workflow.add_node("model", model)
 workflow.add_node("add_embedded_vykony", add_co_occurrence_vykony)
 workflow.add_node("validate", validate)
+workflow.add_node("clear", clear)
 workflow.add_edge("__start__", "preprocess")
 workflow.add_edge("preprocess", "model")
 workflow.add_edge("model", "validate")
 workflow.add_edge("validate", "add_embedded_vykony")
+workflow.add_edge("add_embedded_vykony", "clear")
 
 graph = workflow.compile()
-graph.name = "New Graph"  # This defines the custom name in LangSmith
