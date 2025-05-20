@@ -13,3 +13,4 @@ wheels/
 pickle/*.pkl
 data
 backend/src/logs.log
+.env
