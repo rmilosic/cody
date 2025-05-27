@@ -1,8 +1,7 @@
-import { useState } from "react"
-import { useEffect } from "react"
-import BillingCodeGenerator from "./components/billing-code-generator"
-import { FlickeringGrid } from "./components/magicui/flickering-grid"
-import { TooltipProvider } from "./components/ui/tooltip"
+import { useState, useEffect } from "react"
+import { Suspense } from "react"
+import PojistnaUdalostForm from "@/components/pojistna-udalost-form"
+import { Toaster } from "@/components/ui/toaster"
 
 function App() {
   const [width, setWidth] = useState(0)
@@ -15,22 +14,19 @@ function App() {
 
   return (
     <div>
-      <main className="p-8 flex flex-col gap-4 relative min-h-screen justify-center">
-        <TooltipProvider>
-          <BillingCodeGenerator />
-        </TooltipProvider>
+      <main className="min-h-screen bg-gray-50">
+      <div className="container mx-auto py-8 px-4">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Systém pro vyúčtování pojistných událostí</h1>
+        <p className="text-gray-600 mb-8">
+          Nástroj pro analýzu a přípravu zúčtovatelných položek z lékařských poznámek
+        </p>
 
-        <FlickeringGrid
-          className="absolute inset-0 z-0 [mask-image:radial-gradient(450px_circle_at_center,white,transparent)] overflow-hidden"
-          squareSize={4}
-          gridGap={6}
-          color="#60A5FA"
-          maxOpacity={0.5}
-          flickerChance={0.1}
-          height={height}
-          width={width}
-        />
-      </main>
+        <Suspense fallback={<div className="text-center py-10">Načítání aplikace...</div>}>
+          <PojistnaUdalostForm />
+        </Suspense>
+      </div>
+      <Toaster />
+    </main>
     </div>
   )
 }

@@ -4,8 +4,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from langchain_core.documents import Document
 
-
+def vector_material_filter_funct(doc: Document) -> bool:
+    """Vector filter function"""
+    return doc.metadata.get("record") ==  "material"
 
 # with open("data/stats/diag_code_proportion.json") as f:
 #     diag_code_proportion: dict[str, list[int]] = json.load(f)

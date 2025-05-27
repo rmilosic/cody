@@ -24,6 +24,7 @@ app.add_middleware(
 # vykony = pd.read_pickle("pickle/vykony.pkl")
 # vykpac = pd.read_pickle("pickle/vykpac.pkl")
 
+zpravy = pd.read_csv("data/zpravy.csv")
 
 # def read_jsonl(path: str) -> dict:
 #     import json
@@ -151,19 +152,29 @@ app.add_middleware(
 #     order by datum_a_cas_zpravy, AMBNUM, cispac ASC
 #     """
 # ).df()
-
+@app.get("/generate")
+async def generate_medical_text() -> dict:
+    
+    random_text = zpravy.sample(1).iloc[0]
+    
+    return {"results": {
+        "text": random_text["text"],
+        "diag_primary": random_text["diag_primary"],
+        "diag_others": random_text["diag_others"]
+    }}
 
 @app.get("/vykony")
 async def get_vykony_cis(query: str = Query(default="")) -> dict:
-    test = (
-        duckdb.sql(
-            f"select * from vykony_labels_df where name ilike '%{query}%' or description ilike '%{query}%' limit 10"
-        )
-        .df()
-        .to_dict(orient="records")
-    )
+    # test = (
+    #     duckdb.sql(
+    #         f"select * from vykony_labels_df where name ilike '%{query}%' or description ilike '%{query}%' limit 10"
+    #     )
+    #     .df()
+    #     .to_dict(orient="records")
+    # )
 
-    return {"result": test}
+    
+    return {"result": "test"}
 
 
 # @app.get("/get_patient_data/{iloc}")

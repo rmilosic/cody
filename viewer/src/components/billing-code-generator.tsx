@@ -1,5 +1,5 @@
 import jsConfetti from "js-confetti"
-import { useEffect, useRef, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ShineBorder } from "@/components/magicui/shine-border"
@@ -127,6 +127,13 @@ export default function BillingCodeGenerator() {
   const [searchQuery, setSearchQuery] = useState("")
   const [randomIdx, setRandomIdx] = useState<number | null>(null)
 
+  const medicalText = useSWR<{
+    results: string
+  }>(`/generate`, fetcher, {
+    keepPreviousData: true,
+    onSuccess: (data) => setMedicalReport(data.results),
+  })
+
   const pacient = useSWR<{
     zpravy_content: string
     material: Record<string, unknown>[]
@@ -226,36 +233,39 @@ export default function BillingCodeGenerator() {
               className="min-h-[300px] font-mono [field-sizing:content]"
               value={medicalReport}
               onChange={(e) => setMedicalReport(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && e.shiftKey) {
-                  e.preventDefault()
+              // onKeyDown={(e) => {
+              //   if (e.key === "Enter" && e.shiftKey) {
+              //     e.preventDefault()
 
-                  if (timer.current) {
-                    window.clearInterval(timer.current)
-                    timer.current = null
+              //     if (timer.current) {
+              //       window.clearInterval(timer.current)
+              //       timer.current = null
 
-                    return
-                  }
+              //       return
+              //     }
 
-                  const keptValue = e.currentTarget.value
-                  let i = 0
-                  timer.current = window.setInterval(() => {
-                    const nextValue = keptValue.slice(0, i)
-                    setMedicalReport(nextValue)
-                    i += 1
+              //     const keptValue = e.currentTarget.value
+              //     let i = 0
+              //     timer.current = window.setInterval(() => {
+              //       const nextValue = keptValue.slice(0, i)
+              //       setMedicalReport(nextValue)
+              //       i += 1
 
-                    if (nextValue === keptValue) {
-                      if (timer.current) window.clearInterval(timer.current)
-                    }
-                  }, 1)
-                }
-              }}
+              //       if (nextValue === keptValue) {
+              //         if (timer.current) window.clearInterval(timer.current)
+              //       }
+              //     }, 1)
+              //   }
+              // }}
             />
           </CardContent>
           <CardFooter className="grid grid-cols-[auto_1fr] gap-4">
             <Button
               variant="outline"
-              onClick={() => setRandomIdx((prev) => (prev ?? -1) + 1)}
+              // onClick={
+              //   // () => setRandomIdx((prev) => (prev ?? -1) + 1)
+              //   // generateMedicalText
+              // }
             >
               <Dices className="mr-1" />
               Enter random patient
@@ -322,7 +332,7 @@ export default function BillingCodeGenerator() {
                     />
                     <CommandList>
                       <CommandEmpty>No billing code found.</CommandEmpty>
-                      <CommandGroup heading="Available Billing Codes">
+                      {/* <CommandGroup heading="Available Billing Codes">
                         {billingCodes.data?.result
                           .slice(0, 10)
                           ?.map((codeItem) => (
@@ -357,7 +367,7 @@ export default function BillingCodeGenerator() {
                               </div>
                             </CommandItem>
                           ))}
-                      </CommandGroup>
+                      </CommandGroup> */}
                     </CommandList>
                   </Command>
                 </PopoverContent>
