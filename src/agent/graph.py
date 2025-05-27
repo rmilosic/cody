@@ -12,6 +12,8 @@ import logging
 from functools import reduce
 from typing import List, Union
 
+from agent.utils import vector_vykon_filter_funct, vector_material_filter_funct
+
 import numpy as np
 import pandas as pd
 
@@ -32,7 +34,7 @@ from agent import abbrev_node, utils
 from agent.state import AgentState
 
 
-from agent.types import State, ProcessedData, MatchedMaterial
+from agent.types import State, ProcessedData, MatchedMaterial, Material
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +45,12 @@ chat_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 # load vector store
 try:
     vector_store = InMemoryVectorStore.load("data/vectorstore", embedding=OpenAIEmbeddings())
+    materialy_df = pd.read_json("data/ciselniky/materialy.jsonl", orient="records", lines=True)
 except BaseException as e:
     raise e
+
+
+
 
 async def process_text(state: State) -> State:
     """Process text and return structured JSON data."""
@@ -64,25 +70,32 @@ async def process_text(state: State) -> State:
 async def match_materials(state: State) -> State:
     """Match materials from state against an official list"""
    
-    materialy: List[str] = state["processed_data"].get("materialy", [])
+    materialy: List[MatchedMaterial] = state.get("materialy", [])
     for _, material in enumerate(materialy):
-        if not isinstance(material, str):
-            continue
+       
         
         # zp = vector_store.similarity_search(material, k=10, filter=utils.vector_material_filter_funct)
         # 1. faza  - rozkoskovat material
-        extracted_material: Union[MatchedMaterial, None] = await chat_model.with_structured_output(MatchedMaterial).ainvoke([
-            SystemMessage(content="Vyextrahuj verbatim strukturu materiala (brand, velikost baleni, velikost produktu. Pokud si nejseš jisti, vynech pole prazdne"),
-            HumanMessage(content=material)
-        ])
+        # extracted_material: Union[MatchedMaterial, None] = await chat_model.with_structured_output(MatchedMaterial).ainvoke([
+        #     SystemMessage(content="Vyextrahuj verbatim strukturu materiala (brand, velikost baleni, velikost produktu. Pokud si nejseš jisti, vynech pole prazdne"),
+        #     HumanMessage(content=material)
+        # ])
         
-        materialy[_] = extracted_material.model_dump()
+        matched_docs: List[Document] = vector_store.similarity_search(material.get("verbatim_name"), k=20, filter=vector_material_filter_funct)
+        
+        print(f"len {len(materialy_df)} matched docs")
+        
+        if material.get("brand"):
+            matched_docs: List[Document] = [doc for doc in matched_docs if material.get("brand") in doc.name]
+        
+        if len(matched_docs):
+            materialy[_]["code"] = matched_docs[0].metadata.get("code") 
+            materialy[_]["name"] = matched_docs[0].metadata.get("name")
+        
     
     return {
-        "processed_data": {
-            "vykony": state["processed_data"].get("vykony"), 
-            "materialy": materialy
-        }
+        "vykony": state.get("vykony", []), 
+        "materialy": materialy
     }
 
 
@@ -91,11 +104,11 @@ workflow = StateGraph(State)
 
 # Add nodes for each step
 workflow.add_node("process_text", process_text)
-# workflow.add_node("match_materials", match_materials)
+workflow.add_node("match_materials", match_materials)
 
 # Define the flow
 workflow.set_entry_point("process_text")
-# workflow.add_edge("process_text", "match_materials")
+workflow.add_edge("process_text", "match_materials")
 
 # Compile the graph
 graph = workflow.compile()

@@ -12,6 +12,8 @@ import { useToast } from "../hooks/use-toast"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { fetcher } from "@/fetcher.mjs"
+import { useStream } from "@langchain/langgraph-sdk/react"
+
 import useSWR from "swr"
 
 // Typy pro položky
@@ -42,6 +44,7 @@ export type MedicalText = {
 
 export default function PojistnaUdalostForm() {
   const [lekarskePoznamky, setLekarskePoznamky] = useState("")
+  const [threadId, setThreadId] = useState<string | null>(null)
   const [hlavniDiagnoza, setHlavniDiagnoza] = useState("")
   const [vedlejsiDiagnozy, setVedlejsiDiagnozy] = useState("")
   const [odbornost, setOdbornost] = useState("J13")
@@ -67,6 +70,39 @@ export default function PojistnaUdalostForm() {
             setVedlejsiDiagnozy(data.results.diag_others?.replace("; ", ",")  || "")
         },
     })
+
+    const stream = useStream<{
+        text: string
+        // diagnosis?: {
+        //   vykony: Array<{
+        //     code: string
+        //     name: string
+        //     description: string | null
+        //     explanation: string
+        //   }>
+        // }
+      }>({
+        apiUrl: "http://localhost:2024",
+        threadId,
+        onThreadId: setThreadId,
+        assistantId: "agent",
+        onFinish: (state) => {
+            console.log("state", state)
+        //   setSelectedCodes((prev) => [
+        //     ...prev,
+        //     ...(state.values.diagnosis?.vykony
+        //       .map((code) => ({
+        //         code: code.code,
+        //         name: code.name,
+        //         description: code.description,
+        //         explanation: code?.explanation ?? "(unknown)",
+        //         count: 1,
+        //         source: "ai" as const,
+        //       }))
+        //       .sort((a, b) => Number(a.code) - Number(b.code)) ?? []),
+        //   ])
+        },
+      })
 
   const analyzujText = async () => {
     if (!odbornost.trim()) {
@@ -107,7 +143,9 @@ export default function PojistnaUdalostForm() {
 
     setAnalyzuji(true)
 
-    // Simulace zpracování textu pomocí LLM (v reálné aplikaci by zde byl API call)
+    // setSelectedCodes((prev) => prev.filter(({ source }) => source !== "ai"))
+    setThreadId(null)
+    stream.submit({ text: lekarskePoznamky })
     await new Promise((resolve) => setTimeout(resolve, 3000))
 
     // Simulované výsledky analýzy

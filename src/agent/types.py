@@ -27,6 +27,7 @@ class ProcessOutput(BaseModel):
 class MatchedMaterial(Material):
     """Matched material from text against official list"""
     code: str = Field(description="code of the material")
+    name: str = Field(description="name of the material")
 
 class State(TypedDict):
     """Graph state"""

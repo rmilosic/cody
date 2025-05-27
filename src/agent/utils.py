@@ -10,6 +10,10 @@ def vector_material_filter_funct(doc: Document) -> bool:
     """Vector filter function"""
     return doc.metadata.get("record") ==  "material"
 
+def vector_vykon_filter_funct(doc: Document) -> bool:
+    """Vector filter function"""
+    return doc.metadata.get("record") ==  "vykon"
+
 # with open("data/stats/diag_code_proportion.json") as f:
 #     diag_code_proportion: dict[str, list[int]] = json.load(f)
 

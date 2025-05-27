@@ -157,11 +157,14 @@ async def generate_medical_text() -> dict:
     
     random_text = zpravy.sample(1).iloc[0]
     
-    return {"results": {
-        "text": random_text["text"],
-        "diag_primary": random_text["diag_primary"],
-        "diag_others": random_text["diag_others"]
-    }}
+    return {
+        "results": {
+            "text": random_text["text"],
+            "diag_primary": random_text["diag_primary"],
+            "diag_others": random_text["diag_others"]
+        }
+    }
+
 
 @app.get("/vykony")
 async def get_vykony_cis(query: str = Query(default="")) -> dict:
@@ -174,7 +177,9 @@ async def get_vykony_cis(query: str = Query(default="")) -> dict:
     # )
 
     
-    return {"result": "test"}
+    return {
+        "result": "test"
+    }
 
 
 # @app.get("/get_patient_data/{iloc}")
