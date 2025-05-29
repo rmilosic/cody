@@ -1,6 +1,8 @@
 import json
-from typing import Any, TypedDict
+from typing import Any, List, TypedDict
 import logging
+
+from agent.types import MatchedVykon, MatchedVykony
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,28 @@ def vector_material_filter_funct(doc: Document) -> bool:
 def vector_vykon_filter_funct(doc: Document) -> bool:
     """Vector filter function"""
     return doc.metadata.get("record") ==  "vykon"
+
+
+def dedupe_vykony(vykony: MatchedVykony) -> dict[str, MatchedVykon]:
+    """Deduplicate vykony by code."""
+    seen = set()
+    deduped: dict[any] = {}
+    orig_vykony: List[MatchedVykon] = vykony.get("results") 
+
+    for vykon in orig_vykony:
+        if vykon["code"] not in seen:
+            seen.add(vykon["code"])
+            deduped[vykon["code"]] = vykon
+        else:
+            existing_verbatim = deduped[vykon["code"]].get("verbatim_name")
+            deduped[vykon["code"]]["verbatim_name"] = ", ".join(
+                filter(
+                    None,
+                    [existing_verbatim, vykon.get("verbatim_name")],
+                )
+            )
+            
+    return deduped
 
 # with open("data/stats/diag_code_proportion.json") as f:
 #     diag_code_proportion: dict[str, list[int]] = json.load(f)
