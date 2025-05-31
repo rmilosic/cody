@@ -16,30 +16,39 @@ import { useStream } from "@langchain/langgraph-sdk/react"
 
 import useSWR from "swr"
 
+
 // Typy pro položky
 export type PolozkaVykon = {
-  id: string
-  nazev: string
-  kod: string
-  zdrojovyText: string
+  name: string
+  code: string
+  description: string
+  verbatim_name: string
   prijato: boolean
-  mnozstvi: number // Přidáno množství pro výkony
+  count: number // Přidáno množství pro výkony
 }
 
-export type PolozkaMaterial = {
-  id: string
-  nazev: string
-  kod: string
-  mnozstvi: number
-  jednotka: string
-  zdrojovyText: string
+export type VykonyResults = {
+  results_deduped: { [code: string]: PolozkaVykon }
+}
+
+export type MaterialResults = Array<PolozkaMaterial>
+
+export type Material= {
+  name: string
+  code: string
+  count: number
+  // jednotka: string
+  verbatim_name: string
   prijato: boolean
+}
+export type PolozkaMaterial = {
+  results: Array<Material>
 }
 
 export type MedicalText = {
-    text: string,
-    diag_primary: string,
-    diag_others: Array<string>|null
+  text: string,
+  diag_primary: string,
+  diag_others: Array<string> | null
 }
 
 export default function PojistnaUdalostForm() {
@@ -47,7 +56,7 @@ export default function PojistnaUdalostForm() {
   const [threadId, setThreadId] = useState<string | null>(null)
   const [hlavniDiagnoza, setHlavniDiagnoza] = useState("")
   const [vedlejsiDiagnozy, setVedlejsiDiagnozy] = useState("")
-  const [odbornost, setOdbornost] = useState("J13")
+  const [odbornost, setOdbornost] = useState("913")
   const [analyzuji, setAnalyzuji] = useState(false)
   const [analyzovano, setAnalyzovano] = useState(false)
   const [vykony, setVykony] = useState<PolozkaVykon[]>([])
@@ -56,53 +65,92 @@ export default function PojistnaUdalostForm() {
   const { toast } = useToast()
 
 
-    const getTextandDiag = useSWR<{
-        results: {
-            text: string,
-            diag_primary: string,
-            diag_others: string
-        }
-    }>(`/generate`, fetcher, {
-        keepPreviousData: true,
-        onSuccess: (data) => {
-            setLekarskePoznamky(data.results.text)
-            setHlavniDiagnoza(data.results.diag_primary)
-            setVedlejsiDiagnozy(data.results.diag_others?.replace("; ", ",")  || "")
-        },
-    })
+  const getTextandDiag = useSWR<{
+    results: {
+      text: string,
+      diag_primary: string,
+      diag_others: string
+    }
+  }>(`/generate`, fetcher, {
+    keepPreviousData: true,
+    onSuccess: (data) => {
+      setLekarskePoznamky(data.results.text)
+      setHlavniDiagnoza(data.results.diag_primary)
+      setVedlejsiDiagnozy(data.results.diag_others?.replace("; ", ",") || "")
+    },
+  })
 
-    const stream = useStream<{
-        text: string
-        // diagnosis?: {
-        //   vykony: Array<{
-        //     code: string
-        //     name: string
-        //     description: string | null
-        //     explanation: string
-        //   }>
-        // }
-      }>({
-        apiUrl: "http://localhost:2024",
-        threadId,
-        onThreadId: setThreadId,
-        assistantId: "agent",
-        onFinish: (state) => {
-            console.log("state", state)
-        //   setSelectedCodes((prev) => [
-        //     ...prev,
-        //     ...(state.values.diagnosis?.vykony
-        //       .map((code) => ({
-        //         code: code.code,
-        //         name: code.name,
-        //         description: code.description,
-        //         explanation: code?.explanation ?? "(unknown)",
-        //         count: 1,
-        //         source: "ai" as const,
-        //       }))
-        //       .sort((a, b) => Number(a.code) - Number(b.code)) ?? []),
-        //   ])
-        },
+  const stream = useStream<{
+    materialy: MaterialResults
+    vykony: VykonyResults
+    // code: string
+    // odbornost: string
+    // hlavniDiagnoza: string
+    // vedlejsiDiagnozy: string
+    // diagnosis?: {
+    //   vykony: Array<{
+    //     code: string
+    //     name: string
+    //     description: string | null
+    //     explanation: string
+    //   }>
+    // }
+  }>({
+    apiUrl: "http://localhost:2024",
+    threadId,
+    onThreadId: setThreadId,
+    assistantId: "agent",
+    onFinish: (state) => {
+      setVykony((prev: any) => [
+        ...prev,
+        ...(
+          Object.values(state.values.vykony.results_deduped)
+            .map((code: PolozkaVykon) => ({
+              code: code.code,
+              name: code.name,
+              verbatim_name: code.verbatim_name,
+              description: code.description || null,
+              count: 1,
+              source: "ai" as const,
+            }))
+            .sort((a, b) => Number(a.code) - Number(b.code)) ?? []
+        ),
+      ])
+
+      // if dict has any items 
+      const materials = state.values.materialy
+      if (!materials || materials.length === 0) {
+        setAnalyzuji(false)
+        setAnalyzovano(true)
+        toast({
+          title: "Analýza dokončena",
+          description: "Text byl úspěšně analyzován, ale nebyly nalezeny žádné položky.",
+        })
+        return
+      }
+      setMaterialy((prev: any) => [
+        ...prev,
+        ...(
+          materials.flatMap(material => material.results.map(item => ({
+            code: (item as any).code,
+            name: (item as any).name,
+            count: 1,
+            verbatim_name: (item as any).verbatim_name,
+            prijato: true,
+            source: "ai" as const,
+          })))
+        ),
+      ])
+
+
+
+      setAnalyzuji(false)
+      toast({
+        title: "Analýza dokončena",
+        description: "Text byl úspěšně analyzován.",
       })
+    },
+  })
 
   const analyzujText = async () => {
     if (!odbornost.trim()) {
@@ -140,73 +188,70 @@ export default function PojistnaUdalostForm() {
       })
       return
     }
-
     setAnalyzuji(true)
+
 
     // setSelectedCodes((prev) => prev.filter(({ source }) => source !== "ai"))
     setThreadId(null)
-    stream.submit({ text: lekarskePoznamky })
-    await new Promise((resolve) => setTimeout(resolve, 3000))
+    stream.submit({ text: lekarskePoznamky, odbornost: odbornost })
+    // await new Promise((resolve) => setTimeout(resolve, 3000))
 
     // Simulované výsledky analýzy
-    const simulovaneVykony: PolozkaVykon[] = [
-      {
-        id: "v1",
-        nazev: "Vyšetření pacienta praktickým lékařem",
-        kod: "01021",
-        zdrojovyText: "Pacient přišel na kontrolu k praktickému lékaři",
-        prijato: false,
-        mnozstvi: 1,
-      },
-      {
-        id: "v2",
-        nazev: "Odběr krve ze žíly u dospělého",
-        kod: "09119",
-        zdrojovyText: "Byl proveden odběr krve pro biochemické vyšetření",
-        prijato: false,
-        mnozstvi: 1,
-      },
-      {
-        id: "v3",
-        nazev: "EKG vyšetření",
-        kod: "09127",
-        zdrojovyText: "Provedeno EKG vyšetření s normálním nálezem",
-        prijato: false,
-        mnozstvi: 1,
-      },
-    ]
+    // const simulovaneVykony: PolozkaVykon[] = [
+    //   {
+    //     id: "v1",
+    //     name: "Vyšetření pacienta praktickým lékařem",
+    //     code: "01021",
+    //     zdrojovyText: "Pacient přišel na kontrolu k praktickému lékaři",
+    //     prijato: false,
+    //     count: 1,
+    //   },
+    //   {
+    //     id: "v2",
+    //     name: "Odběr krve ze žíly u dospělého",
+    //     code: "09119",
+    //     zdrojovyText: "Byl proveden odběr krve pro biochemické vyšetření",
+    //     prijato: false,
+    //     count: 1,
+    //   },
+    //   {
+    //     id: "v3",
+    //     name: "EKG vyšetření",
+    //     code: "09127",
+    //     zdrojovyText: "Provedeno EKG vyšetření s normálním nálezem",
+    //     prijato: false,
+    //     count: 1,
+    //   },
+    // ]
 
-    const simulovaneMaterialy: PolozkaMaterial[] = [
-      {
-        id: "m1",
-        nazev: "Injekční stříkačka",
-        kod: "M0001",
-        mnozstvi: 1,
-        jednotka: "ks",
-        zdrojovyText: "Použita injekční stříkačka pro odběr krve",
-        prijato: false,
-      },
-      {
-        id: "m2",
-        nazev: "Obvazový materiál",
-        kod: "M0023",
-        mnozstvi: 2,
-        jednotka: "ks",
-        zdrojovyText: "Aplikován obvazový materiál na ránu",
-        prijato: false,
-      },
-    ]
+    // const simulovaneMaterialy: PolozkaMaterial[] = [
+    //   {
+    //     id: "m1",
+    //     name: "Injekční stříkačka",
+    //     code: "M0001",
+    //     count: 1,
+    //     jednotka: "ks",
+    //     zdrojovyText: "Použita injekční stříkačka pro odběr krve",
+    //     prijato: false,
+    //   },
+    //   {
+    //     id: "m2",
+    //     name: "Obvazový materiál",
+    //     code: "M0023",
+    //     count: 2,
+    //     jednotka: "ks",
+    //     zdrojovyText: "Aplikován obvazový materiál na ránu",
+    //     prijato: false,
+    //   },
+    // ]
 
-    setVykony(simulovaneVykony)
-    setMaterialy(simulovaneMaterialy)
-    setAnalyzuji(false)
-    setAnalyzovano(true)
+    // setVykony(simulovaneVykony)
+    // setMaterialy(simulovaneMaterialy)
+    // setAnalyzuji(false)
+    // setAnalyzovano(true)
     // setAktivniTab("vysledky")
 
-    toast({
-      title: "Analýza dokončena",
-      description: "Text byl úspěšně analyzován.",
-    })
+
   }
 
   const resetujFormular = () => {
@@ -222,25 +267,25 @@ export default function PojistnaUdalostForm() {
 
   const prijmiPolozku = (typ: "vykon" | "material", id: string) => {
     if (typ === "vykon") {
-      setVykony(vykony.map((v) => (v.id === id ? { ...v, prijato: true } : v)))
+      setVykony(vykony.map((v) => (v.code === id ? { ...v, prijato: true } : v)))
     } else {
-      setMaterialy(materialy.map((m) => (m.id === id ? { ...m, prijato: true } : m)))
+      setMaterialy(materialy.map((m) => (m.code === id ? { ...m, prijato: true } : m)))
     }
   }
 
   const odmitnoutPolozku = (typ: "vykon" | "material", id: string) => {
     if (typ === "vykon") {
-      setVykony(vykony.map((v) => (v.id === id ? { ...v, prijato: false } : v)))
+      setVykony(vykony.map((v) => (v.code === id ? { ...v, prijato: false } : v)))
     } else {
-      setMaterialy(materialy.map((m) => (m.id === id ? { ...m, prijato: false } : m)))
+      setMaterialy(materialy.map((m) => (m.code === id ? { ...m, prijato: false } : m)))
     }
   }
 
   const upravPolozku = (typ: "vykon" | "material", id: string, data: Partial<PolozkaVykon | PolozkaMaterial>) => {
     if (typ === "vykon") {
-      setVykony(vykony.map((v) => (v.id === id ? { ...v, ...data } : v)))
+      setVykony(vykony.map((v) => (v.code === id ? { ...v, ...data } : v)))
     } else {
-      setMaterialy(materialy.map((m) => (m.id === id ? { ...m, ...data } : m)))
+      setMaterialy(materialy.map((m) => (m.code === id ? { ...m, ...data } : m)))
     }
   }
 
@@ -255,7 +300,7 @@ export default function PojistnaUdalostForm() {
         ...(polozka as Omit<PolozkaVykon, "id" | "prijato">),
         id,
         prijato: true,
-        mnozstvi: (polozka as any).mnozstvi || 1, // Zajistíme, že množství bude vždy definováno
+        count: (polozka as any).mnozstvi || 1, // Zajistíme, že množství bude vždy definováno
       }
       setVykony([...vykony, novaPolozka])
     } else {
@@ -372,13 +417,13 @@ export default function PojistnaUdalostForm() {
             </div>
 
             <VysledkyAnalyzy
-                  vykony={vykony}
-                  materialy={materialy}
-                  prijmiPolozku={prijmiPolozku}
-                  odmitnoutPolozku={odmitnoutPolozku}
-                  upravPolozku={upravPolozku}
-                  pridejNovouPolozku={pridejNovouPolozku}
-            /> 
+              vykony={vykony}
+              materialy={materialy}
+              prijmiPolozku={prijmiPolozku}
+              odmitnoutPolozku={odmitnoutPolozku}
+              upravPolozku={upravPolozku}
+              pridejNovouPolozku={pridejNovouPolozku}
+            />
           </TabsContent>
 
           {/* <TabsContent value="vysledky">

@@ -43,8 +43,11 @@ class ProcessOutput(BaseModel):
 
 class MatchedMaterial(Material):
     """Matched material from text against official list"""
-    code: str = Field(description="code of the material")
-    name: str = Field(description="name of the material")
+    code: Optional[str] = Field(description="code of the material")
+    name: Optional[str] = Field(description="name of the material")
+
+class MatchedMaterials(BaseModel):
+    results: List[MatchedMaterial] = Field(description="matched materials from text")
 
 
 class State(TypedDict):
@@ -54,5 +57,5 @@ class State(TypedDict):
     diag_primary: str
     diag_others: Optional[List[str]] = None
     vykony: Optional[MatchedVykony] = None
-    materialy: Optional[List[Material]] = None
+    materialy: Optional[MatchedMaterials] = None
     # leky: Optional[List[Material]] = None

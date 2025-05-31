@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 // Importujeme další ikony
 import { Check, X, Edit, Plus, Minus } from "lucide-react"
-import type { PolozkaVykon, PolozkaMaterial } from "./pojistna-udalost-form"
+import type { PolozkaVykon, PolozkaMaterial, Material } from "./pojistna-udalost-form"
 
 interface VysledkyAnalyzyProps {
   vykony: PolozkaVykon[]
@@ -54,11 +54,11 @@ export default function VysledkyAnalyzy({
           <div className="space-y-3">
             {vykony.map((vykon) => (
               <PolozkaVykonuKarta
-                key={vykon.id}
+                key={vykon.code}
                 vykon={vykon}
-                prijmiPolozku={() => prijmiPolozku("vykon", vykon.id)}
-                odmitnoutPolozku={() => odmitnoutPolozku("vykon", vykon.id)}
-                upravPolozku={(data) => upravPolozku("vykon", vykon.id, data)}
+                prijmiPolozku={() => prijmiPolozku("vykon", vykon.code)}
+                odmitnoutPolozku={() => odmitnoutPolozku("vykon", vykon.code)}
+                upravPolozku={(data) => upravPolozku("vykon", vykon.code, data)}
               />
             ))}
             <PridatNovyVykonDialog pridejVykon={(vykon) => pridejNovouPolozku("vykon", vykon)} />
@@ -83,11 +83,11 @@ export default function VysledkyAnalyzy({
           <div className="space-y-3">
             {materialy.map((material) => (
               <PolozkaMaterialuKarta
-                key={material.id}
+                key={material.code}
                 material={material}
-                prijmiPolozku={() => prijmiPolozku("material", material.id)}
-                odmitnoutPolozku={() => odmitnoutPolozku("material", material.id)}
-                upravPolozku={(data) => upravPolozku("material", material.id, data)}
+                prijmiPolozku={() => prijmiPolozku("material", material.code)}
+                odmitnoutPolozku={() => odmitnoutPolozku("material", material.code)}
+                upravPolozku={(data) => upravPolozku("material", material.code, data)}
               />
             ))}
             <PridatNovyMaterialDialog pridejMaterial={(material) => pridejNovouPolozku("material", material)} />
@@ -112,29 +112,29 @@ interface PolozkaVykonuKartaProps {
 // Upravíme komponentu PolozkaVykonuKarta
 function PolozkaVykonuKarta({ vykon, prijmiPolozku, odmitnoutPolozku, upravPolozku }: PolozkaVykonuKartaProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editedNazev, setEditedNazev] = useState(vykon.nazev)
-  const [editedKod, setEditedKod] = useState(vykon.kod)
-  const [editedMnozstvi, setEditedMnozstvi] = useState(vykon.mnozstvi.toString())
+  const [editedNazev, setEditedNazev] = useState(vykon.name)
+  const [editedKod, setEditedKod] = useState(vykon.code)
+  const [editedMnozstvi, setEditedMnozstvi] = useState(vykon.count.toString())
 
   const ulozitZmeny = () => {
     upravPolozku({
-      nazev: editedNazev,
-      kod: editedKod,
-      mnozstvi: Number.parseInt(editedMnozstvi) || 1,
+      name: editedNazev,
+      code: editedKod,
+      count: Number.parseInt(editedMnozstvi) || 1,
     })
     setIsEditing(false)
   }
 
   const zvysitMnozstvi = () => {
     upravPolozku({
-      mnozstvi: vykon.mnozstvi + 1,
+      count: vykon.count + 1,
     })
   }
 
   const snizitMnozstvi = () => {
-    if (vykon.mnozstvi > 1) {
+    if (vykon.count > 1) {
       upravPolozku({
-        mnozstvi: vykon.mnozstvi - 1,
+        count: vykon.count - 1,
       })
     }
   }
@@ -147,21 +147,21 @@ function PolozkaVykonuKarta({ vykon, prijmiPolozku, odmitnoutPolozku, upravPoloz
             {isEditing ? (
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor={`nazev-${vykon.id}`}>Název výkonu</Label>
+                  <Label htmlFor={`nazev-${vykon.code}`}>Název výkonu</Label>
                   <Input
-                    id={`nazev-${vykon.id}`}
+                    id={`nazev-${vykon.code}`}
                     value={editedNazev}
                     onChange={(e) => setEditedNazev(e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label htmlFor={`kod-${vykon.id}`}>Kód výkonu</Label>
-                  <Input id={`kod-${vykon.id}`} value={editedKod} onChange={(e) => setEditedKod(e.target.value)} />
+                  <Label htmlFor={`kod-${vykon.code}`}>Kód výkonu</Label>
+                  <Input id={`kod-${vykon.code}`} value={editedKod} onChange={(e) => setEditedKod(e.target.value)} />
                 </div>
                 <div>
-                  <Label htmlFor={`mnozstvi-${vykon.id}`}>Množství</Label>
+                  <Label htmlFor={`mnozstvi-${vykon.code}`}>Množství</Label>
                   <Input
-                    id={`mnozstvi-${vykon.id}`}
+                    id={`mnozstvi-${vykon.code}`}
                     type="number"
                     min="1"
                     value={editedMnozstvi}
@@ -180,20 +180,20 @@ function PolozkaVykonuKarta({ vykon, prijmiPolozku, odmitnoutPolozku, upravPoloz
             ) : (
               <>
                 <div className="flex items-center space-x-2">
-                  <h3 className="font-medium">{vykon.nazev}</h3>
-                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Kód: {vykon.kod}</span>
+                  <h3 className="font-medium">{vykon.name}</h3>
+                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Kód: {vykon.code}</span>
                   <div className="flex items-center space-x-1 bg-gray-100 rounded px-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={snizitMnozstvi}
-                      disabled={vykon.mnozstvi <= 1}
+                      disabled={vykon.count <= 1}
                       className="h-6 w-6 p-0"
                     >
                       <Minus className="h-3 w-3" />
                       <span className="sr-only">Snížit množství</span>
                     </Button>
-                    <span className="text-xs font-medium">{vykon.mnozstvi}</span>
+                    <span className="text-xs font-medium">{vykon.count}</span>
                     <Button size="sm" variant="ghost" onClick={zvysitMnozstvi} className="h-6 w-6 p-0">
                       <Plus className="h-3 w-3" />
                       <span className="sr-only">Zvýšit množství</span>
@@ -202,7 +202,7 @@ function PolozkaVykonuKarta({ vykon, prijmiPolozku, odmitnoutPolozku, upravPoloz
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
                   <span className="font-medium">Zdroj:</span>{" "}
-                  <span className="bg-yellow-100 px-1 py-0.5 rounded">{vykon.zdrojovyText}</span>
+                  <span className="bg-yellow-100 px-1 py-0.5 rounded">{vykon.verbatim_name}</span>
                 </p>
               </>
             )}
@@ -245,7 +245,7 @@ function PolozkaVykonuKarta({ vykon, prijmiPolozku, odmitnoutPolozku, upravPoloz
 }
 
 interface PolozkaMaterialuKartaProps {
-  material: PolozkaMaterial
+  material: Material
   prijmiPolozku: () => void
   odmitnoutPolozku: () => void
   upravPolozku: (data: Partial<PolozkaMaterial>) => void
@@ -259,31 +259,31 @@ function PolozkaMaterialuKarta({
   upravPolozku,
 }: PolozkaMaterialuKartaProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editedNazev, setEditedNazev] = useState(material.nazev)
-  const [editedKod, setEditedKod] = useState(material.kod)
-  const [editedMnozstvi, setEditedMnozstvi] = useState(material.mnozstvi.toString())
-  const [editedJednotka, setEditedJednotka] = useState(material.jednotka)
+  const [editedNazev, setEditedNazev] = useState(material.name)
+  const [editedKod, setEditedKod] = useState(material.code)
+  const [editedMnozstvi, setEditedMnozstvi] = useState(material.count?.toString() ||" ")
+  // const [editedJednotka, setEditedJednotka] = useState(material.jednotka)
 
   const ulozitZmeny = () => {
     upravPolozku({
-      nazev: editedNazev,
-      kod: editedKod,
-      mnozstvi: Number.parseInt(editedMnozstvi) || 1,
-      jednotka: editedJednotka,
+      name: editedNazev,
+      code: editedKod,
+      count: Number.parseInt(editedMnozstvi) || 1,
+      // jednotka: editedJednotka,
     })
     setIsEditing(false)
   }
 
   const zvysitMnozstvi = () => {
     upravPolozku({
-      mnozstvi: material.mnozstvi + 1,
+      count: material.count + 1,
     })
   }
 
   const snizitMnozstvi = () => {
-    if (material.mnozstvi > 1) {
+    if (material.count > 1) {
       upravPolozku({
-        mnozstvi: material.mnozstvi - 1,
+        count: material.count - 1,
       })
     }
   }
@@ -296,36 +296,36 @@ function PolozkaMaterialuKarta({
             {isEditing ? (
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor={`nazev-${material.id}`}>Název materiálu</Label>
+                  <Label htmlFor={`nazev-${material.code}`}>Název materiálu</Label>
                   <Input
-                    id={`nazev-${material.id}`}
+                    id={`nazev-${material.code}`}
                     value={editedNazev}
                     onChange={(e) => setEditedNazev(e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label htmlFor={`kod-${material.id}`}>Kód materiálu</Label>
-                  <Input id={`kod-${material.id}`} value={editedKod} onChange={(e) => setEditedKod(e.target.value)} />
+                  <Label htmlFor={`kod-${material.code}`}>Kód materiálu</Label>
+                  <Input id={`kod-${material.code}`} value={editedKod} onChange={(e) => setEditedKod(e.target.value)} />
                 </div>
                 <div className="flex space-x-2">
                   <div className="w-1/2">
-                    <Label htmlFor={`mnozstvi-${material.id}`}>Množství</Label>
+                    <Label htmlFor={`mnozstvi-${material.code}`}>Množství</Label>
                     <Input
-                      id={`mnozstvi-${material.id}`}
+                      id={`mnozstvi-${material.code}`}
                       type="number"
                       min="1"
                       value={editedMnozstvi}
                       onChange={(e) => setEditedMnozstvi(e.target.value)}
                     />
                   </div>
-                  <div className="w-1/2">
-                    <Label htmlFor={`jednotka-${material.id}`}>Jednotka</Label>
+                  {/* <div className="w-1/2">
+                    <Label htmlFor={`jednotka-${material.code}`}>Jednotka</Label>
                     <Input
-                      id={`jednotka-${material.id}`}
+                      id={`jednotka-${material.code}`}
                       value={editedJednotka}
                       onChange={(e) => setEditedJednotka(e.target.value)}
                     />
-                  </div>
+                  </div> */}
                 </div>
                 <div className="flex space-x-2">
                   <Button size="sm" onClick={ulozitZmeny}>
@@ -339,22 +339,22 @@ function PolozkaMaterialuKarta({
             ) : (
               <>
                 <div className="flex items-center space-x-2">
-                  <h3 className="font-medium">{material.nazev}</h3>
-                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Kód: {material.kod}</span>
+                  <h3 className="font-medium">{material.name}</h3>
+                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Kód: {material.code}</span>
                   <div className="flex items-center space-x-1 bg-gray-100 rounded px-1">
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={snizitMnozstvi}
-                      disabled={material.mnozstvi <= 1}
+                      disabled={material.count <= 1}
                       className="h-6 w-6 p-0"
                     >
                       <Minus className="h-3 w-3" />
                       <span className="sr-only">Snížit množství</span>
                     </Button>
-                    <span className="text-xs font-medium">
-                      {material.mnozstvi} {material.jednotka}
-                    </span>
+                    {/* <span className="text-xs font-medium">
+                      {material.count} {material.jednotka}
+                    </span> */}
                     <Button size="sm" variant="ghost" onClick={zvysitMnozstvi} className="h-6 w-6 p-0">
                       <Plus className="h-3 w-3" />
                       <span className="sr-only">Zvýšit množství</span>
@@ -363,7 +363,7 @@ function PolozkaMaterialuKarta({
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
                   <span className="font-medium">Zdroj:</span>{" "}
-                  <span className="bg-yellow-100 px-1 py-0.5 rounded">{material.zdrojovyText}</span>
+                  <span className="bg-yellow-100 px-1 py-0.5 rounded">{material.verbatim_name}</span>
                 </p>
               </>
             )}
@@ -421,7 +421,7 @@ function PridatNovyVykonDialog({
       nazev,
       kod,
       zdrojovyText,
-      mnozstvi: Number.parseInt(mnozstvi) || 1, // Přidáno množství
+      count: Number.parseInt(mnozstvi) || 1, // Přidáno množství
     })
     setOpen(false)
     resetForm()
@@ -502,7 +502,7 @@ function PridatNovyMaterialDialog({
     pridejMaterial({
       nazev,
       kod,
-      mnozstvi: Number.parseInt(mnozstvi) || 1,
+      count: Number.parseInt(mnozstvi) || 1,
       jednotka,
       zdrojovyText,
     })

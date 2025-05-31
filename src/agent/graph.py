@@ -39,7 +39,7 @@ from agent import abbrev_node, utils
 from agent.state import AgentState
 
 
-from agent.types import MatchedVykon, MatchedVykony, State, ProcessedData, MatchedMaterial, Material, Vykon
+from agent.types import MatchedMaterials, MatchedVykon, MatchedVykony, State, ProcessedData, MatchedMaterial, Material, Vykon
 
 import difflib
 
@@ -78,8 +78,9 @@ async def process_text(state: State) -> State:
         SystemMessage(content="""
                       Jseš personal ve zdravotnim zarizeni. Ze zpravy najdi zdravotnice pomucky nebo zarizeni ktere lze vykazat pojistovne. 
                       Najdi jenom materialy a pomucky ktery byly pouzity/predepsané v ramci teto zpravi. 
+                      Ne nachazej neco, co neni zdravotnicka pomucka nebo zarizeni (napr. jídlo, pití, oblečení, atd.).
                       Ne nachazet leky.
-                      Pouzij verbatim text.
+                      Vzdy pouzij stejni slova jako jsou ve zprave.
                       """),
         HumanMessage(content=state["text"])
     ])
@@ -112,7 +113,7 @@ async def match_materials(state: State) -> State:
         # best_match = None
         # best_ratio = 0
         
-        materials: List[Document] = vector_store.similarity_search(material.get("verbatim_name"), k=10, filter=vector_material_filter_funct)
+        materials: List[Document] = vector_store.similarity_search(material.get("verbatim_name"), k=5, filter=vector_material_filter_funct)
 
         # dump Document object to json as a line
         materials_text = "\n".join([json.dumps(material.metadata) for material in materials])
@@ -120,13 +121,17 @@ async def match_materials(state: State) -> State:
 
 
 
-        matched_material: MatchedMaterial = await match_model.with_structured_output(MatchedMaterial).ainvoke([
-            SystemMessage(content=f"from the provided materials, find the best match for the material."),
+        matched_materials: MatchedMaterials = await match_model.with_structured_output(MatchedMaterials).ainvoke([
+            SystemMessage(content=f"""
+            from the provided materials, find the best match for the material.
+            If there are multiple similar materials and pck size or variation is not specified, provide all possible matches.
+            If you are not sure, leave the material empty.
+                          """),
             HumanMessage(content=f"""material: \n {material.get("verbatim_name")} \n\n 
                          possible matches: \n {materials_text} """)
         ])
 
-        materialy[idx] = matched_material.model_dump()
+        materialy[idx] = matched_materials.model_dump()
     return {
         "materialy": materialy,
         "odbornost": state.get("odbornost", None),
@@ -135,7 +140,9 @@ async def match_materials(state: State) -> State:
     }
 
 async def match_vykony(state: State) -> State:
-    """Match vykony from state against an official list"""
+    """Najdi vykony z textu a porovnej s oficialnim seznamem vykonu.
+   
+    """
     
     vykony_df = pd.read_json("data/ciselniky/vykon.jsonl", orient="records", lines=True)
 
@@ -158,7 +165,9 @@ async def match_vykony(state: State) -> State:
     vykony: MatchedVykony = await match_model.with_structured_output(MatchedVykony).ainvoke([
         SystemMessage(content="""
                       Jseš personal ve zdravotnim zarizeni. Ze zpravy najdi vykony ktere lze vykazat pojistovne. 
+                    ve vysledku pro verbatim_name vzdy pouzij stejni slova pro ve ambulantni zprave.
                       Najdi jenom vykony ktery byly provedene v ramci teto zpravi.
+                    davej pozor na intervence (napr. vysetreni, diagnostika, pomoc, aplikace leku atd.).
                       Pokud si nejsi jistý, nech vykon prázdný. 
                       """),
         HumanMessage(content=f"""zprava: \n {state["text"]} \n\n možne vykony: \n {vykony_txt}""")
