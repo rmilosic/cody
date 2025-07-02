@@ -12,10 +12,10 @@ from agent.graph.graph import graph
 
 def accuracy(outputs: dict, reference_outputs: dict) -> float:
     human_vykony = json.loads(reference_outputs["vykony"])
-    llm_vykony = (outputs.get("diagnosis") or {}).get("vykony") or []
+    llm_vykony = (outputs.get("vykony") or {}).get("vykony") or []
 
-    human_kody = set(v["kod_vykonu"] for v in human_vykony)
-    llm_kody = set(v["code"] for v in llm_vykony)
+    human_kody = set(v["kod_vykonu"] for v in human_vykony.split(";"))
+    llm_kody = set(v["code"] for v in json.loads(llm_vykony["results_deduped"].values()))
 
     true_positives = human_kody & llm_kody
 
@@ -38,7 +38,7 @@ def accuracy(outputs: dict, reference_outputs: dict) -> float:
 async def main():
     await aevaluate(
         graph,
-        data="rakathon-oncoders",
+        data="cody-test",
         evaluators=[accuracy],
         max_concurrency=10,
     )

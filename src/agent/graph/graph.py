@@ -90,7 +90,7 @@ async def process_text(state: State) -> State:
             "materialy": processed_data.get("materialy", []),
             "odbornost": state.get("odbornost", None),
             "diag_primary": state.get("diag_primary", None),
-            "diag_others": state.get("diag_others", None)
+            "diag_secondary": state.get("diag_others", None)
         }
     except json.JSONDecodeError:
         return {"processed_data": {}}
