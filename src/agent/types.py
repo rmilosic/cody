@@ -59,3 +59,20 @@ class State(TypedDict):
     vykony: Optional[MatchedVykony] = None
     materialy: Optional[MatchedMaterials] = None
     # leky: Optional[List[Material]] = None
+
+
+class Odbornost(BaseModel):
+    """Odbornost basic definition."""
+    code: str = Field(description="code of the odbornost")
+    name: str = Field(description="name of the odbornost")
+
+class DataGeneratorState(TypedDict):
+    """Graph state"""
+    text: str
+    odbornost: str
+    diag_primary: str = None
+    diag_others: Optional[List[str]] = None
+    vykony: List[MatchedVykon]
+    materialy: Optional[MatchedMaterials] = None
+    # leky: Optional[List[Material]] = None
+

@@ -5,7 +5,7 @@ from langsmith import aevaluate
 
 load_dotenv()
 
-from agent.graph import graph
+from agent.graph.graph import graph
 
 
 def accuracy(outputs: dict, reference_outputs: dict) -> float:

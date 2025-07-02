@@ -38,7 +38,7 @@ def dedupe_vykony(vykony: MatchedVykony) -> dict[str, MatchedVykon]:
             
     return deduped
 
-# with open("data/stats/diag_code_proportion.json") as f:
+# with open("data/stats/diag_code_proportion.") as f:
 #     diag_code_proportion: dict[str, list[int]] = json.load(f)
 
 

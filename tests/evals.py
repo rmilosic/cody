@@ -6,7 +6,7 @@ from langsmith import aevaluate
 
 load_dotenv()
 
-from agent.graph import graph
+from agent.graph.graph import graph
 
 
 

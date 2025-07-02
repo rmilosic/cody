@@ -4,7 +4,7 @@ import pytest
 from dotenv import load_dotenv
 from langsmith import testing as t
 
-from agent.graph import graph
+from agent.graph.graph import graph
 from agent.types import State
 from agent.utils import dedupe_vykony
 

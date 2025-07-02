@@ -1,7 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./src/agent/graph.py:graph"
+    "agent": "./src/agent/graph/graph.py:graph",
+    "generator": "./src/agent/graph/generate_data.py:graph"
   },
   "http": {
     "app": "./src/agent/http/debug.py:app"

@@ -14,3 +14,4 @@ pickle/*.pkl
 data
 backend/src/logs.log
 .env
+test_data.csv
